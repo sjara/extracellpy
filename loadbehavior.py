@@ -44,16 +44,16 @@ class BehaviorData(dict):
         self.check_version()
         self.datanode = h5file.getNode('/SessionParams')
         self.populate_dict()
-        #self.ints_to_string('StateLabelName')  # Convert to strings
+        h5file.close()
 
-        # FIX FIRST TRIAL!!! (see ~/zadorlab/data_analysis/mice_discrim/extract_data.m)
-        
-        # CHANGE FIRST INDEX TO 0 (the Python/C way)
+        # -- Change first index to zero (the Python/C way) --
         self['StateLabelTrialID'] = self['StateLabelTrialID'].astype('int32') - 1
         self['RawEventsTrialID'] = self['RawEventsTrialID'].astype('int32') - 1
 
         self['nTrials'] = int(self['RawEventsTrialID'][-1]) + 1  # Since index starts at zero
-        #self.mask_first_trial()
+
+        # -- Fix the length of some arrays (FIX THIS, SHOULD NOT BE HARDCODED) --
+        self['WithdrawalFromProbeOnset'] = self['WithdrawalFromProbeOnset'][:self['nTrials']]
 
     def mask_first_trial(self):
         eventsFirstTrial = np.flatnonzero(self['RawEventsTrialID']==1)
@@ -127,14 +127,7 @@ class BehaviorData(dict):
     def time_of_state_transition(self,prevStateID,nextStateID):
         '''Returns the time of the transition from prevStateID to nextStateID on each trial.
         It assumes that the states have the same ID on all trials.
-        If the transition did not occur, it returns -1 for that trial.
-
-        FINISH THIS
-
-        transitionEventInds = np.logical_and(self['RawEvents'][:,0]==prevStateID,
-                                             self['RawEvents'][:,3]==nextStateID)
-        transitionEventTimes = self['RawEvents'][transitionEventInds,2]
-        return transitionEventTimes
+        If the transition did not occur, it returns NaN for that trial.
         '''
         transitionEventTimes = np.empty(self['nTrials'])
         transitionEventTimes.fill(np.nan)
@@ -144,13 +137,35 @@ class BehaviorData(dict):
         transitionEventTimes[transitionTrialInd] = self['RawEvents'][transitionEventInds,2]
         return transitionEventTimes
 
+    def time_of_event(self,stateID,actionID):
+        '''Returns the time of a given action within a given state (on each trial)
+        It ignores all actions after the first one detected.
+        It assumes that the states and actions have the same ID on all trials.
+        If the event did not occur, it returns NaN for that trial.
+        '''
+        eventTimes = np.empty(self['nTrials'])
+        eventTimes.fill(np.nan)
+        eventInds = np.logical_and(self['RawEvents'][:,0]==stateID,
+                                   self['RawEvents'][:,1]==actionID)
+        transitionTrialInd = self['RawEventsTrialID'][eventInds]
+        # Hack to ensure the first action is used instead of the last one.
+        # A better solution is to use 'unique' with 'return_index' but this is
+        # not available in Numpy_1.3
+        eventInds = np.flatnonzero(eventInds)[::-1]
+        transitionTrialInd = transitionTrialInd[::-1]
+        eventTimes[transitionTrialInd] = self['RawEvents'][eventInds,2]
+        return eventTimes
+    
+
 
 '''
 behavData['RawEvents'][:20,:]
 behavData['StateLabelName'][:10]
 behavData['StateLabelTrialID']==1
 
-
+eventInds = [2,3,5,20290]
+transitionTrialInd = behavData['RawEventsTrialID'][eventInds]
+unique(transitionTrialInd,return_index=True)
 
 rawnode = h5file.getNode('/SessionParams/RawEvents')
 rawdata = rawnode.read()
