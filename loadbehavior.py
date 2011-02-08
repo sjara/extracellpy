@@ -13,11 +13,8 @@ import os
 import string
 import struct
 
-#BehavDataDir = '/var/data/test/'
-#BehavFileName = os.path.join(BehavDataDir,'data_saja_reversal_santiago_saja064_20110204a.h5')
-
 def pp(rawev):
-    '''Pretty print a matrix of raw events
+    '''Pretty print a matrix of raw events.
     It displays only four of the five columns, since the last one is irrelevant'''
     for row in rawev:
         print '%d \t % d \t %0.4f \t %d'%(row[0],row[1],row[2],row[3])
@@ -129,6 +126,12 @@ class BehaviorData(dict):
         It assumes that the states have the same ID on all trials.
         If the transition did not occur, it returns NaN for that trial.
         '''
+        # FIXME: I'm changing the value of a parameter passed by reference
+        # -- If input is a state name, find its ID --
+        if isinstance(prevStateID,str):
+            prevStateID = self.find_stateID(prevStateID)
+        if isinstance(nextStateID,str):
+            nextStateID = self.find_stateID(nextStateID)
         transitionEventTimes = np.empty(self['nTrials'])
         transitionEventTimes.fill(np.nan)
         transitionEventInds = np.logical_and(self['RawEvents'][:,0]==prevStateID,
@@ -143,6 +146,12 @@ class BehaviorData(dict):
         It assumes that the states and actions have the same ID on all trials.
         If the event did not occur, it returns NaN for that trial.
         '''
+        # FIXME: I'm changing the value of a parameter passed by reference
+        # -- If input is a name, find its ID --
+        if isinstance(stateID,str):
+            stateID = self.find_stateID(stateID)
+        if isinstance(actionID,str):
+            actionID = self.find_actionID(actionID)
         eventTimes = np.empty(self['nTrials'])
         eventTimes.fill(np.nan)
         eventInds = np.logical_and(self['RawEvents'][:,0]==stateID,
@@ -155,7 +164,10 @@ class BehaviorData(dict):
         transitionTrialInd = transitionTrialInd[::-1]
         eventTimes[transitionTrialInd] = self['RawEvents'][eventInds,2]
         return eventTimes
-    
+
+    def find_actionID(self,actionName):
+        raise TypeError('This method is not implemented yet')
+
 
 
 '''
