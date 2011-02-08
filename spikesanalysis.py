@@ -4,20 +4,22 @@
 '''Functions for analysis of spikes
 '''
 
-from pylab import *
+#from pylab import *
+import numpy as np
 
 __author__ = 'Santiago Jaramillo'
-__version__ = "$Revision: 2009-03-06$"
+__version__ = '0.2'
 
 
 def findfirstsmallerthan(xvec,thevalue):
     '''Find index for first value in xvec smaller than thevalue
+       OBSOLETE: use np.searchsorted instead
     '''
     ind=None
     fromvalue=0
     tovalue=len(xvec)
     while (tovalue-fromvalue)>0:
-        mid = ceil((fromvalue + tovalue)/2.0)
+        mid = np.ceil((fromvalue + tovalue)/2.0)
         #mid = (fromvalue + tovalue)/2
         if(xvec[mid]>thevalue):
             tovalue = mid-1
@@ -32,96 +34,168 @@ def findfirstsmallerthan(xvec,thevalue):
     return ind
 
 
-def eventlocked_spiketimes(TimeStamps,EventOnsetTimes,TimeRange):
+def OLD_eventlocked_spiketimes(TimeStamps,EventOnsetTimes,TimeRange):
     '''Create a vector with the spike timestamps w.r.t. event onset.
 
-       TrialIndexForEachSpike starts at 0 (not 1 like matlab)
+    [SpikeTimesFromEventOnset,TrialIndexForEachSpike] = 
+        eventlocked_spiketimes(TimeStamps,EventOnsetTimes,TimeRange)
+
+    TrialIndexForEachSpike starts at 0 (not 1 like matlab)
     '''
-    #[SpikeTimesFromEventOnset,TrialIndexForEachSpike] = ...
-
     nTrials = len(EventOnsetTimes)
-
-    ### CHECK IF TIMESTAMPS ARE SORTED ###
+    # FIXME: check if timestamps are sorted
     
-    SpikeTimesFromEventOnset = []
-    TrialIndexForEachSpike = []
+    SpikeTimesFromEventOnset = np.empty(0,dtype='float64')
+    TrialIndexForEachSpike = np.empty(0,dtype='int')
 
-    for indtrial in arange(nTrials):
+    for indtrial in np.arange(nTrials):
         ThisTrialRange = EventOnsetTimes[indtrial] + TimeRange
-        FirstSpikeInTrial = findfirstsmallerthan(TimeStamps,ThisTrialRange[0])+1
-        LastSpikeInTrial = findfirstsmallerthan(TimeStamps,ThisTrialRange[-1])
-        SpikesThisTrial = arange(FirstSpikeInTrial,LastSpikeInTrial+1)
-        SpikeTimesFromEventOnset = r_[SpikeTimesFromEventOnset,\
-                         TimeStamps[SpikesThisTrial]-EventOnsetTimes[indtrial]]
+        FirstSpikeInTrial = np.searchsorted(TimeStamps,ThisTrialRange[0])
+        LastSpikeInTrial = np.searchsorted(TimeStamps,ThisTrialRange[-1])-1
+        SpikesThisTrial = np.arange(FirstSpikeInTrial,LastSpikeInTrial+1)
+        SpikeTimesFromEventOnset = np.concatenate((SpikeTimesFromEventOnset,
+                                        TimeStamps[SpikesThisTrial]-EventOnsetTimes[indtrial]))
         NSpikesThisTrial = len(SpikesThisTrial)
-        TrialIndexForEachSpike = r_[TrialIndexForEachSpike,\
-                                    repeat(indtrial,NSpikesThisTrial)];
+        TrialIndexForEachSpike = np.concatenate((TrialIndexForEachSpike,
+                                            np.repeat(indtrial,NSpikesThisTrial)))
+        #SpikeTimesFromEventOnset = r_[SpikeTimesFromEventOnset,\
+        #                 TimeStamps[SpikesThisTrial]-EventOnsetTimes[indtrial]]
+        #TrialIndexForEachSpike = r_[TrialIndexForEachSpike,\
+        #                            repeat(indtrial,NSpikesThisTrial)];
     
     return (SpikeTimesFromEventOnset,TrialIndexForEachSpike)
 
 
-def calculate_psth_quant(SpikeRasterMat,TimeVec,WindowSize,TimeOffset=0):
-    '''Calculate Peri-Stimulus Time Histogram without overlapping windows.
+def eventlocked_spiketimes(TimeStamps,EventOnsetTimes,TimeRange):
+    '''Create a vector with the spike timestamps w.r.t. event onset.
+
+    [SpikeTimesFromEventOnset,IndexLimitsEachTrial] = 
+        eventlocked_spiketimes(TimeStamps,EventOnsetTimes,TimeRange)
+
+    TrialIndexForEachSpike starts at 0 (not 1 like matlab)
     '''
-    Ntrials = SpikeRasterMat.shape[0]
-    deltaTime = TimeVec[1]-TimeVec[0]
-    WindowSizeInSamples = int(round(WindowSize/deltaTime))
+    nTrials = len(EventOnsetTimes)
+    # FIXME: check if timestamps are sorted
+    
+    SpikeTimesFromEventOnset = np.empty(0,dtype='float64')
+    TrialIndexForEachSpike = np.empty(0,dtype='int')
+    IndexLimitsEachTrial = np.empty((2,nTrials),dtype='int')
+    accumIndexFirstSpike = 0
+
+    for indtrial in np.arange(nTrials):
+        ThisTrialRange = EventOnsetTimes[indtrial] + TimeRange
+        FirstSpikeInTrial = np.searchsorted(TimeStamps,ThisTrialRange[0])
+        LastSpikeInTrial = np.searchsorted(TimeStamps,ThisTrialRange[-1])-1
+        SpikesThisTrial = np.arange(FirstSpikeInTrial,LastSpikeInTrial+1)
+        SpikeTimesFromEventOnset = np.concatenate((SpikeTimesFromEventOnset,
+                                        TimeStamps[SpikesThisTrial]-EventOnsetTimes[indtrial]))
+        NSpikesThisTrial = len(SpikesThisTrial)
+        TrialIndexForEachSpike = np.concatenate((TrialIndexForEachSpike,
+                                            np.repeat(indtrial,NSpikesThisTrial)))
+        IndexLimitsEachTrial[:,indtrial] = [accumIndexFirstSpike,accumIndexFirstSpike+NSpikesThisTrial-1]
+        accumIndexFirstSpike += NSpikesThisTrial
+        #1/0 ### DEBUG
+    return (SpikeTimesFromEventOnset,TrialIndexForEachSpike,IndexLimitsEachTrial)
+
+
+def calculate_psth_quant(spikeRasterMat,timeVec,windowSize,TimeOffset=0):
+    '''Calculate Peri-Stimulus Time Histogram without overlapping windows.'''
+    nTrials = spikeRasterMat.shape[0]
+    deltaTime = timeVec[1]-timeVec[0]
+    windowSizeInSamples = int(round(windowSize/deltaTime))
     OffsetInSamples = int(round(TimeOffset/deltaTime))
 
-    BinsStartSample = arange(OffsetInSamples,len(TimeVec)-OffsetInSamples,WindowSizeInSamples)
-    BinsStartTime = BinsStartSample*deltaTime + TimeVec[0]
+    BinsStartSample = np.arange(OffsetInSamples,len(timeVec)-OffsetInSamples,windowSizeInSamples)
+    BinsStartTime = BinsStartSample*deltaTime + timeVec[0]
 
-    WindowCount = zeros((Ntrials,len(BinsStartSample)))
+    WindowCount = np.zeros((nTrials,len(BinsStartSample)))
     for indb in range(len(BinsStartSample)-1):
-        WindowCount[:,indb] = sum(SpikeRasterMat[:,\
-                                  arange(BinsStartSample[indb],BinsStartSample[indb+1])] ,axis=1)
-    PSTH = mean(WindowCount,axis=0)
+        spikeMatThisBin = spikeRasterMat[:,np.arange(BinsStartSample[indb],BinsStartSample[indb+1])]
+        WindowCount[:,indb] = np.sum(spikeMatThisBin,axis=1)
+    PSTH = np.mean(WindowCount,axis=0)
     deltaBinTime = BinsStartTime[1]-BinsStartTime[0]
     PSTH = PSTH/deltaBinTime
     #return (PSTH,BinsStartTime,WindowCount)
     return (PSTH,BinsStartTime)
 
+def calculate_psth(spikeRasterMat,timeVec,windowSize):
+    ''' '''
+    nTrials = spikeRasterMat.shape[0]
+    deltaTime = timeVec[1]-timeVec[0]
+    windowSizeInSamples = int(round(windowSize/deltaTime))
 
-def spiketimes_to_sparsemat(SpikeTimesFromEventOnset,TrialIndexForEachSpike,\
-                                         Ntrials, TimeVec):
+    windowShape = np.ones(windowSizeInSamples)
+    PSTHeach = np.empty(spikeRasterMat.shape,dtype=np.float64)
+    for indt,trial in enumerate(spikeRasterMat):
+        PSTHeach[indt,:] = np.convolve(trial,windowShape,'same')
+    PSTH = np.mean(PSTHeach,axis=0)
+    return PSTH
+
+
+def spiketimes_to_sparsemat(spikeTimesFromEventOnset,indexLimitsEachTrial,\
+                                         nTrials, timeVec):
     '''Create a (sparse) matrix with spikes given the times of the spikes.
 
-       SpikeTimesFromEventOnset: vector of spikes timestamps with respect
-       to the onset of the event.
-       TrialIndexForEachSpike: trial index for each spike (starting at 0, not 1 like matlab)
-       NTrials: total number of trials (necessary since some trials may have no spikes)
-       TimeVec: vector that defines the horizontal axis of the matrix.
+       spikeTimesFromEventOnset: vector of spikes timestamps with respect
+         to the onset of the event.
+       indexLimitsEachTrial: each column contains [firstInd,lastInd] of the spikes on a trial
+       nTrials: total number of trials (necessary since some trials may have no spikes)
+       timeVec: vector that defines the horizontal axis of the matrix.
 
-       Returns SpikeRasterMat
+       Returns spikeRasterMat
+       NOTES: 
+       - If two spikes are within the same bin, they are counted as only one.
+    '''
+    deltaTime = timeVec[1]-timeVec[0]
+    # NOTE: Using full matrix instead of sparse.
+    spikeRasterMat = np.empty((nTrials,len(timeVec)),dtype=bool)
+    for indtrial in range(nTrials):
+        indsThisTrial = slice(indexLimitsEachTrial[0,indtrial],indexLimitsEachTrial[1,indtrial]+1)
+        sampleIndexOfSpike = np.around( (spikeTimesFromEventOnset[indsThisTrial]-timeVec[0]) / deltaTime ).astype(int)
+        #if indtrial==1: 1/0 ### DEBUG
+        spikeRasterMat[indtrial,sampleIndexOfSpike]=True
+    return spikeRasterMat
+
+def OLD_spiketimes_to_sparsemat(spikeTimesFromEventOnset,trialIndexForEachSpike,\
+                                         nTrials, timeVec):
+    '''Create a (sparse) matrix with spikes given the times of the spikes.
+
+       spikeTimesFromEventOnset: vector of spikes timestamps with respect
+       to the onset of the event.
+       trialIndexForEachSpike: trial index for each spike (starting at 0, not 1 like matlab)
+       NTrials: total number of trials (necessary since some trials may have no spikes)
+       timeVec: vector that defines the horizontal axis of the matrix.
+
+       Returns spikeRasterMat
        NOTES: 
        - If two spikes are within the same bin, they are counted as only one.
 
     Based on spiketimes_to_sparsemat.m (by Santiago Jaramillo - 2007.05.09)
     '''
-    deltaTime = TimeVec[1]-TimeVec[0]
-    SpikeRasterMat = zeros((Ntrials,len(TimeVec)),dtype=bool)
-    #print('Using full matrix instead of sparse.')
-    for indtrial in range(Ntrials):
-        SpikeTimesThisTrial = SpikeTimesFromEventOnset[TrialIndexForEachSpike==indtrial]
-        SampleIndexOfSpike = around( (SpikeTimesThisTrial-TimeVec[0]) / deltaTime ).astype(int)
-        SpikeRasterMat[indtrial,SampleIndexOfSpike]=True
+    deltaTime = timeVec[1]-timeVec[0]
+    # NOTE: Using full matrix instead of sparse.
+    spikeRasterMat = np.empty((nTrials,len(timeVec)),dtype=bool)
+    for indtrial in range(nTrials):
+        spikeTimesThisTrial = spikeTimesFromEventOnset[trialIndexForEachSpike==indtrial]
+        sampleIndexOfSpike = np.around( (spikeTimesThisTrial-timeVec[0]) / deltaTime ).astype(int)
+        #if indtrial==1: 1/0 ### DEBUG
+        spikeRasterMat[indtrial,sampleIndexOfSpike]=True
+    return spikeRasterMat
 
-    return SpikeRasterMat
-
-def sparsemat_to_spiketimes(SpikeRasterMat, TimeVec):
+def sparsemat_to_spiketimes(spikeRasterMat, timeVec):
     '''Calculate the spike times given a (sparse) matrix and time vector.
        It should be used only for displaying data since it returns
        quantized times.
 
-       SpikeTimesFromEventOnset: vector of spikes timestamps with respect
+       spikeTimesFromEventOnset: vector of spikes timestamps with respect
          to the onset of the event.
-       TrialIndexForEachSpike: trial index for each spike.
-       TimeVec: vector that defines the horizontal axis of the matrix.
+       trialIndexForEachSpike: trial index for each spike.
+       timeVec: vector that defines the horizontal axis of the matrix.
 
-       Returns (SpikeTimesFromEventOnset,TrialIndexForEachSpike)
+       Returns (spikeTimesFromEventOnset,trialIndexForEachSpike)
        
        Based on sparsemat_to_spiketimes.m (by Santiago Jaramillo - 2007.08.09)
     '''
-    (TrialIndexForEachSpike,Cols) = SpikeRasterMat.nonzero()
-    SpikeTimesFromEventOnset = TimeVec[Cols]
-    return (SpikeTimesFromEventOnset,TrialIndexForEachSpike)
+    (trialIndexForEachSpike,Cols) = spikeRasterMat.nonzero()
+    spikeTimesFromEventOnset = timeVec[Cols]
+    return (spikeTimesFromEventOnset,trialIndexForEachSpike)
