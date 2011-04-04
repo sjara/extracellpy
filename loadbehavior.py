@@ -6,7 +6,7 @@
 import numpy as np
 
 __author__ = 'Santiago Jaramillo'
-__version__ = '0.1'
+__version__ = '0.2'
 
 import tables
 import os
@@ -35,11 +35,12 @@ FORMAT_VERSION_HDF5_MATLAB = '1.3_BControl'
 class BehaviorData(dict):
     '''Access to behavior data in HDF5 format saved by SaveToHDF5.m'''
 
-    def __init__(self,behavFileName):
-        h5file = tables.openFile(behavFileName, mode = "r")
+    def __init__(self,behavFile):
+        h5file = tables.openFile(behavFile, mode = "r")
+        self.fileName = behavFile
         self.formatversion = h5file.getNode('/DataFormatVersion').read()[0]
         self.check_version()
-        self.datanode = h5file.getNode('/SessionParams')
+        self._datanode = h5file.getNode('/SessionParams') # Node is gone when closing file
         self.populate_dict()
         h5file.close()
 
@@ -57,12 +58,23 @@ class BehaviorData(dict):
         self['RawEvents'][eventsFirstTrial,:] = 0
 
     def populate_dict(self):
-        '''Load all data as dictionary key:value pairs'''
-        for (key,value) in self.datanode._v_children.iteritems():
-            if value.shape[0]>1:
-                self[key] = value.read().transpose()
+        '''Load all data as dictionary paramName:value pairs'''
+        for (paramName,paramValue) in self._datanode._v_children.iteritems():
+            #print type(paramValue), paramName, paramValue.shape
+            if isinstance(paramValue,tables.carray.CArray):
+                if paramValue.shape[0]>1:
+                    self[paramName] = paramValue.read().transpose()
+                else:
+                    self[paramName] = paramValue.read()[0]
+            elif isinstance(paramValue,tables.array.Array):
+                self[paramName] = paramValue.read()[0]
+            elif isinstance(paramValue,tables.table.Table):
+                dkeys   = paramValue.colnames
+                dvalues = map(int,paramValue.read()[0])
+                self[paramName] = dict(zip(dkeys,dvalues))
             else:
-                self[key] = value.read()[0]
+                raise TypeError('Unknown type: %s',paramName)
+        #1/0
 
     def check_version(self):
         '''Verify that the file has the same version as this module'''
@@ -109,7 +121,9 @@ class BehaviorData(dict):
             thisTrialStateValues = self['StateLabelValue'][thisTrialSlice]
             return thisTrialStateValues[indFirstStateName]
         else:
-            raise ValueError('State %s does not exist.'%stateName)
+            #raise ValueError('State %s does not exist.'%stateName)
+            print 'State %s does not exist.'%stateName
+            return -1
 
     def time_start_each_trial(self,firstStateID):
         '''Returns the time of the transition into firstState for each trial.
@@ -168,6 +182,103 @@ class BehaviorData(dict):
     def find_actionID(self,actionName):
         raise TypeError('This method is not implemented yet')
 
+    def align_to_ephys(self,trialStartEphys):
+        '''Find time of start of each trial according to the electrophysiology clock.'''
+        # WARNING: this applies only to BControl with empty first trial 
+        trialStartTime = self.trialStartTime[1:]
+        # -- Find InterTrialIntervals --
+        behavITI=np.diff(trialStartTime)
+        ephysITI=np.diff(trialStartEphys)
+        behavITI=np.hstack((0,behavITI))
+        ephysITI=np.hstack((0,ephysITI))
+        # -- Find closes ITI from behavior --
+        bestInd = np.empty(behavITI.shape,dtype=np.intp)
+        for indt,iti in enumerate(behavITI):
+            bestInd[indt] = np.argmin(np.abs(iti-ephysITI))
+        # -- Fix indexes for which ISI calculation yielded something off --
+        for ind in range(1,bestInd.size-1):
+            if abs(bestInd[ind]-bestInd[ind-1])>2:
+                if bestInd[ind+1]-bestInd[ind-1]==2:
+                    bestInd[ind] = bestInd[ind-1]+1
+        #ephysTimeStamps = np.empty(trialStartTime.shape)
+        #ephysTimeStamps.fill(np.NaN)
+        #ephysTimeStamps= trialStartTimeNL[bestInd]
+        self.trialStartTimeEphys = trialStartEphys[bestInd]
+        # WARNING: this applies only to BControl with empty first trial 
+        self.trialStartTimeEphys = np.hstack((self.trialStartTimeEphys[0],
+                                              self.trialStartTimeEphys))
+
+    def check_clock_drift(self):
+        '''Plot comparison between behavior and electrophysiology clocks.'''
+        import pylab as p
+        behavTS = self.trialStartTime
+        ephysTS = self.trialStartTimeEphys
+        p.clf()
+        p.subplot(2,1,1)
+        p.hold(True)
+        pB = p.plot(range(behavTS.size),behavTS-behavTS[1],'o',mec='b',mfc='none')
+        pE = p.plot(range(ephysTS.size),ephysTS-ephysTS[1],'.r')
+        p.hold(False)
+        p.ylabel('Time w.r.t. first event (sec)')
+        p.legend((pB,pE),('Behavior time','Neuralynx time'),numpoints=1,loc='upper left')
+        p.subplot(2,1,2)
+        drift = (ephysTS-ephysTS[1])-(behavTS-behavTS[1])
+        p.plot(range(behavTS.size),drift,'o',mec='b',mfc='none')
+        p.ylabel('Drift between the two clocks (sec)')
+        p.xlabel('Trial')
+        p.show()
+
+
+class ReversalBehaviorData(BehaviorData):
+    '''This class inherits BehaviorData and adds methods specific to reversal protocol.'''
+    def __init__(self,behavFileName):
+        BehaviorData.__init__(self,behavFileName)
+        self['HitHistoryLabels'] = {'Correct':1, 'Error':0, 'EarlyWithdrawal':-1,
+                                     'ErrorNextCorr':-2, 'CorrectNextCorr':2, 'Direct':2,
+                                     'TimeOut':-3}
+        # -- Remove irrelevant values at the end of some arrays --
+        arraysToFix = ['HitHistory','WithdrawalFromProbeOnset',
+                       'RewardSideList','PreStimTime','CurrentBlock','TargetFreq']
+        for arrayName in arraysToFix:
+            self[arrayName] = self[arrayName][:self['nTrials']]
+    def extract_event_times(self):
+        # NOTE: ActionLabels does not have correct labels (Cin=1, Cout=2, ...)
+        #       Maybe BControl's get_col_labels(current_assembler) is wrong.
+        centerPokeOutID = 1 ### WARNING!!! HARDCODED
+        leftPokeInID    = 2 ### WARNING!!! HARDCODED
+        rightPokeInID   = 4 ### WARNING!!! HARDCODED
+        self.trialStartTime = self.time_of_state_transition('state_0','send_trial_info')
+        #self.trialStartTime = self.time_of_state_transition(16,'send_trial_info')
+        self.targetOnsetTime = self.time_of_state_transition('delay_period','play_target')
+        self.centerOutTime = self.time_of_event('wait_for_apoke',centerPokeOutID)
+        self.leftInTime = self.time_of_event('wait_for_apoke',leftPokeInID)
+        self.rightInTime = self.time_of_event('wait_for_apoke',rightPokeInID)
+    def find_trials_each_type(self):
+        self.highFreqs = self['CurrentBlock']==self['CurrentBlockLabels']['HighFreqs']
+        self.lowFreqs = self['CurrentBlock']==self['CurrentBlockLabels']['LowFreqs']
+        self.leftReward = self['RewardSideList']==self['RewardSideListLabels']['left']
+        self.rightReward = self['RewardSideList']==self['RewardSideListLabels']['right']
+        self.correct = self['HitHistory']==self['HitHistoryLabels']['Correct']
+        self.error = self['HitHistory']==self['HitHistoryLabels']['Error']
+        self.early = self['HitHistory']==self['HitHistoryLabels']['EarlyWithdrawal']
+        #self. = self['']==self['Labels']['']
+        self.leftChoice = np.logical_not(np.isnan(self.leftInTime))
+        self.rightChoice = np.logical_not(np.isnan(self.rightInTime))
+        self.sideInTime = np.copy(self.leftInTime)
+        self.sideInTime[self.rightChoice] = self.rightInTime[self.rightChoice]
+    def find_boundaries_each_block(self):
+        # FIXME: for efficiency, check if lastTrialEachBlock already exists
+        blockBoundaries = np.flatnonzero(np.diff(self['CurrentBlock']))
+        self.lastTrialEachBlock = np.hstack((blockBoundaries,self['nTrials']))
+        self.firstTrialEachBlock = np.hstack((0,self.lastTrialEachBlock[:-1]+1))
+        self['nBlocks'] = len(self.lastTrialEachBlock)
+    def find_trials_each_block(self):
+        self.find_boundaries_each_block()
+        self.trialsEachBlock = np.zeros((self['nTrials'],self['nBlocks']),dtype='bool')
+        for block in range(self['nBlocks']):
+            bSlice = slice(self.firstTrialEachBlock[block],self.lastTrialEachBlock[block]+1)
+            self.trialsEachBlock[bSlice,block]=True
+        
 
 
 '''
