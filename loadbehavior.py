@@ -50,9 +50,6 @@ class BehaviorData(dict):
 
         self['nTrials'] = int(self['RawEventsTrialID'][-1]) + 1  # Since index starts at zero
 
-        # -- Fix the length of some arrays (FIX THIS, SHOULD NOT BE HARDCODED) --
-        self['WithdrawalFromProbeOnset'] = self['WithdrawalFromProbeOnset'][:self['nTrials']]
-
     def mask_first_trial(self):
         eventsFirstTrial = np.flatnonzero(self['RawEventsTrialID']==1)
         self['RawEvents'][eventsFirstTrial,:] = 0
@@ -208,6 +205,13 @@ class BehaviorData(dict):
         self.trialStartTimeEphys = np.hstack((self.trialStartTimeEphys[0],
                                               self.trialStartTimeEphys))
 
+    def OTHER_align_to_ephys(self,trialStartEphys,plot=0):
+        '''Find time of start of each trial according to the electrophysiology clock.'''
+        self.trialStartTimeEphys = trialStartEphys[:-1]
+        # WARNING: this applies only to BControl with empty first trial 
+        self.trialStartTimeEphys = np.hstack((self.trialStartTimeEphys[0],
+                                              self.trialStartTimeEphys))
+
     def check_clock_drift(self):
         '''Plot comparison between behavior and electrophysiology clocks.'''
         import pylab as p
@@ -244,9 +248,16 @@ class ReversalBehaviorData(BehaviorData):
     def extract_event_times(self):
         # NOTE: ActionLabels does not have correct labels (Cin=1, Cout=2, ...)
         #       Maybe BControl's get_col_labels(current_assembler) is wrong.
+        # -- Santiago's rig --
         centerPokeOutID = 1 ### WARNING!!! HARDCODED
         leftPokeInID    = 2 ### WARNING!!! HARDCODED
         rightPokeInID   = 4 ### WARNING!!! HARDCODED
+        '''
+        # -- Peter's rig --
+        centerPokeOutID = 2 ### WARNING!!! HARDCODED
+        leftPokeInID    = 16 ### WARNING!!! HARDCODED
+        rightPokeInID   = 4 ### WARNING!!! HARDCODED
+        '''
         self.trialStartTime = self.time_of_state_transition('state_0','send_trial_info')
         #self.trialStartTime = self.time_of_state_transition(16,'send_trial_info')
         self.targetOnsetTime = self.time_of_state_transition('delay_period','play_target')
@@ -279,6 +290,23 @@ class ReversalBehaviorData(BehaviorData):
             bSlice = slice(self.firstTrialEachBlock[block],self.lastTrialEachBlock[block]+1)
             self.trialsEachBlock[bSlice,block]=True
         
+
+class TuningBehaviorData(BehaviorData):
+    '''This class inherits BehaviorData and adds methods specific to tuningcurve protocol.'''
+    def __init__(self,behavFileName):
+        BehaviorData.__init__(self,behavFileName)
+        arraysToFix = ['SoundFreq']
+        for arrayName in arraysToFix:
+            self[arrayName] = self[arrayName][:self['nTrials']]
+    def extract_event_times(self):
+        # NOTE: ActionLabels does not have correct labels (Cin=1, Cout=2, ...)
+        #       Maybe BControl's get_col_labels(current_assembler) is wrong.
+        centerPokeOutID = 1 ### WARNING!!! HARDCODED
+        leftPokeInID    = 2 ### WARNING!!! HARDCODED
+        rightPokeInID   = 4 ### WARNING!!! HARDCODED
+        self.trialStartTime = self.time_of_state_transition('state_0','send_trial_info')
+        self.targetOnsetTime = self.time_of_state_transition('continue_trial','play_sound')
+
 
 
 '''
