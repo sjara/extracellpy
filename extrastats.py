@@ -6,14 +6,33 @@ binofit: Parameter estimates and confidence intervals for binomial data.
 '''
 
 import scipy.stats
-import numpy
+import numpy as np
 import sys
-#from numpy.core.multiarray import *   # FUNCTIONS: where
-#from numpy.core.fromnumeric import *  # FUNCTIONS: nonzero
+#from np.core.multiarray import *   # FUNCTIONS: where
+#from np.core.fromnumeric import *  # FUNCTIONS: nonzero
 #from matplotlib.mlab import *          # FUNCTIONS: find
-#from numpy.lib.shape_base import *     # FUNCTIONS: vstack
+#from np.lib.shape_base import *     # FUNCTIONS: vstack
 
-def binofit(x,n,alpha):
+def binofit(xArray,nArray,alpha):
+    '''Parameter estimates and confidence intervals for binomial data.
+    (p,ci) = binofit(x,N,alpha)
+    '''
+    if isinstance(xArray,np.ndarray):
+        origShape = xArray.shape
+        Psuccess = np.empty(xArray.size)
+        ConfIntervals = np.empty((xArray.size,2))
+        if not isinstance(alpha,np.ndarray):
+            alpha = alpha*np.ones(origShape)
+        for inde in range(xArray.size):
+            Psuccess[inde],ConfIntervals[inde,:] = binofit_scalar(xArray.flat[inde],
+                                                                nArray.flat[inde],
+                                                                alpha.flat[inde])
+        return(Psuccess.reshape(origShape),ConfIntervals.reshape(origShape+(2,)))
+    else:
+        return binofit_scalar(xArray,nArray,alpha)
+        
+
+def binofit_scalar(x,n,alpha):
     '''Parameter estimates and confidence intervals for binomial data.
     (p,ci) = binofit(x,N,alpha)
 
@@ -28,8 +47,8 @@ def binofit(x,n,alpha):
     '''
     
     if n<1:
-        Psuccess = numpy.NaN
-        ConfIntervals = (numpy.NaN,numpy.NaN)
+        Psuccess = np.NaN
+        ConfIntervals = (np.NaN,np.NaN)
     else:
         Psuccess = float(x)/n
         nu1 = 2*x
@@ -56,23 +75,23 @@ def twobinotest(Ntrials,Nhits,Nsets=int(1e4)):
     
     # -- Assume the first one is smaller than the second one --
     # I don't think that assumption is needed (2009.03.26)
-    DiffMean = numpy.diff(Nhits.astype(float)/Ntrials)
+    DiffMean = np.diff(Nhits.astype(float)/Ntrials)
     DiffMeanPos = abs(DiffMean)
     DiffMeanNeg = -DiffMeanPos
     
     NtrialsTotal = Ntrials.sum()
-    Samples = numpy.zeros(NtrialsTotal,dtype='int')
+    Samples = np.zeros(NtrialsTotal,dtype='int')
     Samples[0:Nhits.sum()] = 1
     
-    NhitsBS = numpy.zeros((Nsets,2),dtype='int')
+    NhitsBS = np.zeros((Nsets,2),dtype='int')
     for inds in range(int(Nsets)):
-        NewOrder = numpy.random.randint(NtrialsTotal,size=(NtrialsTotal))
+        NewOrder = np.random.randint(NtrialsTotal,size=(NtrialsTotal))
         NewHits0 = Samples[NewOrder[0:Ntrials[0]]].sum()
         NewHits1 = Samples[NewOrder[Ntrials[0]+1:NtrialsTotal]].sum()
-        NhitsBS[inds,:] = numpy.array([NewHits0,NewHits1])
+        NhitsBS[inds,:] = np.array([NewHits0,NewHits1])
     
-    MeansBS = NhitsBS.astype('float') / Ntrials[numpy.newaxis]
-    DiffMeansBS = numpy.diff(MeansBS)
+    MeansBS = NhitsBS.astype('float') / Ntrials[np.newaxis]
+    DiffMeansBS = np.diff(MeansBS)
     
     #Nbeyondvalue = sum(DiffMeansBS>=DiffMean)
     Nbeyondvalue = sum( (DiffMeansBS>=DiffMeanPos) | (DiffMeansBS<=DiffMeanNeg) )
@@ -86,8 +105,8 @@ if __name__ == "__main__":
     '''Testing the functions on this module'''
     
     # -- Test twobinotest --
-    Ntrials = numpy.array([100,200])
-    Nhits = numpy.array([70,120])
+    Ntrials = np.array([100,200])
+    Nhits = np.array([70,120])
 
     pValue = twobinotest(Ntrials,Nhits)
     

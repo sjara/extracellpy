@@ -1,4 +1,5 @@
 # Compile C library and Cpython wrapper
+# This will work for Linux but it's not tested in other platforms.
 
 # cLoadNeuralynx.pyx loadNeuralynx.o 
 all: cLoadNeuralynx.pyx loadNeuralynx.o 

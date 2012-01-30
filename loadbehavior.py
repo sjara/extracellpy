@@ -13,11 +13,32 @@ import os
 import string
 import struct
 
-def pp(rawev):
+def events_each_trial(trialIDarray):
+    '''Returns a list of arrays of indices to events for each trial'''
+    nTrials = trialIDarray[-1]+1
+    eventsIndList = [np.where(trialIDarray==ind)[0] for ind in range(nTrials)]
+    return eventsIndList
+
+def print_raw(rawev):
     '''Pretty print a matrix of raw events.
     It displays only four of the five columns, since the last one is irrelevant'''
     for row in rawev:
         print '%d \t % d \t %0.4f \t %d'%(row[0],row[1],row[2],row[3])
+
+def print_events(behavData,eventsRange=[]):
+    '''Pretty print a matrix of raw events.
+    It displays only four of the five columns, since the last one is irrelevant'''
+    if not eventsRange:
+        eventsRange = slice(behavData['RawEvents'].shape[0])
+    for row,trialID in zip(behavData['RawEvents'][eventsRange,:],
+                           behavData['RawEventsTrialID'][eventsRange]):
+        eventsThisTrial = behavData['StateLabelTrialID']==trialID
+        statesThisTrial = behavData['StateLabelValue'][eventsThisTrial]
+        indThisState = np.flatnonzero(statesThisTrial==row[0])
+        namesThisTrial = behavData['StateLabelName'][eventsThisTrial,:]
+        nameThisState = ints_to_string(namesThisTrial[indThisState])[0]
+        nameThisState = (nameThisState[:12]+'..') if len(nameThisState)>12 else (nameThisState+'    ')
+        print '[%d] %s \t\t %d \t % d \t %0.4f \t %d'%(trialID,nameThisState,row[0],row[1],row[2],row[3])
 
 def ints_to_string(intarray):
     '''Convert array of integers to array of strings
@@ -40,8 +61,9 @@ class BehaviorData(dict):
         self.fileName = behavFile
         self.formatversion = h5file.getNode('/DataFormatVersion').read()[0]
         self.check_version()
-        self._datanode = h5file.getNode('/SessionParams') # Node is gone when closing file
-        self.populate_dict()
+        #self._datanode = h5file.getNode('/SessionParams') # Node is gone when closing file
+        datanode = h5file.getNode('/SessionParams') # Node is gone when closing file
+        self.populate_dict(datanode)
         h5file.close()
 
         # -- Change first index to zero (the Python/C way) --
@@ -49,14 +71,28 @@ class BehaviorData(dict):
         self['RawEventsTrialID'] = self['RawEventsTrialID'].astype('int32') - 1
 
         self['nTrials'] = int(self['RawEventsTrialID'][-1]) + 1  # Since index starts at zero
+    
+    def __repr__(self):
+        objStrings = []
+        for key,value in sorted(self.iteritems()):
+            if isinstance(value,np.ndarray):
+                objStrings.append('%s : %s\n'%(key,str(value.shape)))
+            elif isinstance(value,int):
+                objStrings.append('%s : %d\n'%(key,value))
+            elif isinstance(value,str):
+                objStrings.append('%s : %s\n'%(key,value))
+            else:
+                objStrings.append('%s : %s\n'%(key,str(type(value))))
+        return ''.join(objStrings)
 
     def mask_first_trial(self):
         eventsFirstTrial = np.flatnonzero(self['RawEventsTrialID']==1)
         self['RawEvents'][eventsFirstTrial,:] = 0
 
-    def populate_dict(self):
+    def populate_dict(self,datanode):
         '''Load all data as dictionary paramName:value pairs'''
-        for (paramName,paramValue) in self._datanode._v_children.iteritems():
+        #for (paramName,paramValue) in self._datanode._v_children.iteritems():
+        for (paramName,paramValue) in datanode._v_children.iteritems():
             #print type(paramValue), paramName, paramValue.shape
             if isinstance(paramValue,tables.carray.CArray):
                 if paramValue.shape[0]>1:
@@ -78,7 +114,8 @@ class BehaviorData(dict):
         if self.formatversion != FORMAT_VERSION_HDF5_MATLAB:
             errstr = 'Data format version (%s) is not %s.'%(self.formatversion,
                                                             FORMAT_VERSION_HDF5_MATLAB)
-            raise TypeError(errstr)
+            #raise TypeError(errstr)
+            print '*** '+errstr+' ***'
 
     def find_stateID_each_trial(self,stateName):
         '''Returns the ID of a state on each trial. VERY INEFFICIENT.
@@ -134,19 +171,60 @@ class BehaviorData(dict):
 
     def time_of_state_transition(self,prevStateID,nextStateID):
         '''Returns the time of the transition from prevStateID to nextStateID on each trial.
+        If prevStateID is an empty string it calculates transition from any state.
         It assumes that the states have the same ID on all trials.
         If the transition did not occur, it returns NaN for that trial.
+        If it occurs more than once, it returns the first time it happens.
+        '''
+        # -- If input is a state name, find its ID --
+        if isinstance(nextStateID,str):
+            nextStateIDval = self.find_stateID(nextStateID)
+        else:
+            nextStateIDval = nextStateID
+        if len(prevStateID):
+            USE_PREVSTATE = True
+            if isinstance(prevStateID,str):
+                prevStateIDval = self.find_stateID(prevStateID)
+            else:
+                prevStateIDval = prevStateID
+        else:
+            USE_PREVSTATE = False
+        transitionEventTimes = np.empty(self['nTrials'])
+        transitionEventTimes.fill(np.nan)
+        eventsIndList = events_each_trial(self['RawEventsTrialID'])
+        for trialInd,eventsInd in enumerate(eventsIndList):
+            if USE_PREVSTATE:
+                transitions = (self['RawEvents'][eventsInd,0]==prevStateIDval) &\
+                              (self['RawEvents'][eventsInd,3]==nextStateIDval)
+                transitionEventInds = np.flatnonzero(transitions)
+            else:
+                transitionEventInds = np.flatnonzero(self['RawEvents'][eventsInd,3]==nextStateIDval)
+            if len(transitionEventInds):
+                # Note that we store only the first transition
+                eventOfInterest = eventsInd[transitionEventInds[0]]
+                transitionEventTimes[trialInd] = self['RawEvents'][eventOfInterest,2]
+        return transitionEventTimes
+
+    def OLD_time_of_state_transition(self,prevStateID,nextStateID):
+        '''Returns the time of the transition from prevStateID to nextStateID on each trial.
+        If prevStateID is an empty string it calculates transition from any state.
+        It assumes that the states have the same ID on all trials.
+        If the transition did not occur, it returns NaN for that trial.
+        If it occurs more than once, it returns the first time it happens.
         '''
         # FIXME: I'm changing the value of a parameter passed by reference
         # -- If input is a state name, find its ID --
-        if isinstance(prevStateID,str):
-            prevStateID = self.find_stateID(prevStateID)
         if isinstance(nextStateID,str):
             nextStateID = self.find_stateID(nextStateID)
         transitionEventTimes = np.empty(self['nTrials'])
         transitionEventTimes.fill(np.nan)
-        transitionEventInds = np.logical_and(self['RawEvents'][:,0]==prevStateID,
-                                             self['RawEvents'][:,3]==nextStateID)
+        if len(prevStateID):
+            if isinstance(prevStateID,str):
+                prevStateID = self.find_stateID(prevStateID)
+            transitionEventInds = np.logical_and(self['RawEvents'][:,0]==prevStateID,
+                                                 self['RawEvents'][:,3]==nextStateID)
+        else:
+            transitionEventInds = self['RawEvents'][:,3]==nextStateID
         transitionTrialInd = self['RawEventsTrialID'][transitionEventInds]
         transitionEventTimes[transitionTrialInd] = self['RawEvents'][transitionEventInds,2]
         return transitionEventTimes
@@ -188,22 +266,46 @@ class BehaviorData(dict):
         ephysITI=np.diff(trialStartEphys)
         behavITI=np.hstack((0,behavITI))
         ephysITI=np.hstack((0,ephysITI))
-        # -- Find closes ITI from behavior --
+        '''
+        p.clf()
+        p.subplot(2,1,1)
+        p.hold(True)
+        pB = p.plot(behavITI,'o',mec='b',mfc='none')
+        pE = p.plot(ephysITI,'.r')
+        p.hold(False)
+        p.show()
+        '''
         bestInd = np.empty(behavITI.shape,dtype=np.intp)
-        for indt,iti in enumerate(behavITI):
-            bestInd[indt] = np.argmin(np.abs(iti-ephysITI))
-        # -- Fix indexes for which ISI calculation yielded something off --
-        for ind in range(1,bestInd.size-1):
-            if abs(bestInd[ind]-bestInd[ind-1])>2:
-                if bestInd[ind+1]-bestInd[ind-1]==2:
-                    bestInd[ind] = bestInd[ind-1]+1
-        #ephysTimeStamps = np.empty(trialStartTime.shape)
-        #ephysTimeStamps.fill(np.NaN)
-        #ephysTimeStamps= trialStartTimeNL[bestInd]
+        inde=0
+        for indt in range(len(behavITI)):
+            if (np.abs(behavITI[indt]-ephysITI[inde]))<1.0:
+                bestInd[indt] = inde
+            elif (np.abs(behavITI[indt]-ephysITI[inde+1]))<1.0:
+                bestInd[indt] = inde+1
+                inde+=1
+            elif (np.abs(behavITI[indt]-ephysITI[inde+2]))<1.0:
+                bestInd[indt] = inde+2
+                inde+=2
+            else:
+                #raise ValueError('Two consecutive erroneous signals from Ephys DIO')
+                print 'WARNING: Could not find ephys trial to align with behavior (trial=%d)\n'%indt
+                bestInd[indt] = 0
+                inde-=1
+            inde+=1
+        '''
+        ephysITI=ephysITI[bestInd]
+        p.subplot(2,1,2)
+        p.hold(True)
+        pB = p.plot(behavITI,'o',mec='b',mfc='none')
+        pE = p.plot(ephysITI,'.r')
+        p.hold(False)
+        p.show()
+        '''
         self.trialStartTimeEphys = trialStartEphys[bestInd]
         # WARNING: this applies only to BControl with empty first trial 
         self.trialStartTimeEphys = np.hstack((self.trialStartTimeEphys[0],
                                               self.trialStartTimeEphys))
+
 
     def OTHER_align_to_ephys(self,trialStartEphys,plot=0):
         '''Find time of start of each trial according to the electrophysiology clock.'''
@@ -224,6 +326,7 @@ class BehaviorData(dict):
         pE = p.plot(range(ephysTS.size),ephysTS-ephysTS[1],'.r')
         p.hold(False)
         p.ylabel('Time w.r.t. first event (sec)')
+        p.title(self['Date'])
         p.legend((pB,pE),('Behavior time','Neuralynx time'),numpoints=1,loc='upper left')
         p.subplot(2,1,2)
         drift = (ephysTS-ephysTS[1])-(behavTS-behavTS[1])
@@ -231,7 +334,8 @@ class BehaviorData(dict):
         p.ylabel('Drift between the two clocks (sec)')
         p.xlabel('Trial')
         p.show()
-
+    def print_events(self,eventsRange=[]):
+        print_events(self,eventsRange)
 
 class ReversalBehaviorData(BehaviorData):
     '''This class inherits BehaviorData and adds methods specific to reversal protocol.'''
@@ -242,25 +346,48 @@ class ReversalBehaviorData(BehaviorData):
                                      'TimeOut':-3}
         # -- Remove irrelevant values at the end of some arrays --
         arraysToFix = ['HitHistory','WithdrawalFromProbeOnset',
-                       'RewardSideList','PreStimTime','CurrentBlock','TargetFreq']
+                       'RewardSideList','PreStimTime','CurrentBlock','TargetFreq',
+                       'TargetDuration','PhotoStimThisTrial']
         for arrayName in arraysToFix:
-            self[arrayName] = self[arrayName][:self['nTrials']]
+            try:
+                self[arrayName] = self[arrayName][:self['nTrials']]
+            except KeyError:
+                pass
+                #print "This data set does not contain '%s'"%arrayName
+        # -- Define BlockIndex for each trial --
+        diffblock = np.diff(self['CurrentBlock'])
+        self['BlockIndex'] = np.cumsum(np.abs(np.r_[0,diffblock])>0)
     def extract_event_times(self):
         # NOTE: ActionLabels does not have correct labels (Cin=1, Cout=2, ...)
         #       Maybe BControl's get_col_labels(current_assembler) is wrong.
-        # -- Santiago's rig --
-        centerPokeOutID = 1 ### WARNING!!! HARDCODED
-        leftPokeInID    = 2 ### WARNING!!! HARDCODED
-        rightPokeInID   = 4 ### WARNING!!! HARDCODED
-        '''
-        # -- Peter's rig --
-        centerPokeOutID = 2 ### WARNING!!! HARDCODED
-        leftPokeInID    = 16 ### WARNING!!! HARDCODED
-        rightPokeInID   = 4 ### WARNING!!! HARDCODED
-        '''
+        #       so instead, here are the definitions for each rig.
+        rig = self['HostName']
+        if rig in ['lermontov','peter']:
+            # -- Peter's rig --
+            centerPokeInID  = 1 ### WARNING!!! HARDCODED
+            centerPokeOutID = 2 ### WARNING!!! HARDCODED
+            leftPokeInID    = 4 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
+            rightPokeInID   = 16 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
+            #leftPokeInID    = 16 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
+            #rightPokeInID   = 4 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
+        elif rig in ['cnmcx','cnmc5','cnmc6','cnmc7','cnmc8','cnmc10','cnmc11','cnmc12']:
+            # -- Most rigs (and old Linux state machine) --
+            centerPokeInID = 0 ### WARNING!!! HARDCODED
+            centerPokeOutID = 1 ### WARNING!!! HARDCODED
+            leftPokeInID    = 4 ### WARNING!!! HARDCODED
+            rightPokeInID   = 16 ### WARNING!!! HARDCODED
+        elif rig in ['cnmc9']:
+            # -- Santiago's rig (with newer Linux state machine) --
+            centerPokeInID = 0 ### WARNING!!! HARDCODED
+            centerPokeOutID = 1 ### WARNING!!! HARDCODED
+            leftPokeInID    = 2 ### WARNING!!! HARDCODED
+            rightPokeInID   = 4 ### WARNING!!! HARDCODED
+        else:
+            raise ValueError('Rig number not defined')
         self.trialStartTime = self.time_of_state_transition('state_0','send_trial_info')
         #self.trialStartTime = self.time_of_state_transition(16,'send_trial_info')
         self.targetOnsetTime = self.time_of_state_transition('delay_period','play_target')
+        self.centerInTime = self.time_of_event('wait_for_cpoke',centerPokeInID)
         self.centerOutTime = self.time_of_event('wait_for_apoke',centerPokeOutID)
         self.leftInTime = self.time_of_event('wait_for_apoke',leftPokeInID)
         self.rightInTime = self.time_of_event('wait_for_apoke',rightPokeInID)
@@ -273,6 +400,7 @@ class ReversalBehaviorData(BehaviorData):
         self.error = self['HitHistory']==self['HitHistoryLabels']['Error']
         self.early = self['HitHistory']==self['HitHistoryLabels']['EarlyWithdrawal']
         #self. = self['']==self['Labels']['']
+        # FIXME: self.leftChoice seems to include rightChoice trials!!!
         self.leftChoice = np.logical_not(np.isnan(self.leftInTime))
         self.rightChoice = np.logical_not(np.isnan(self.rightInTime))
         self.sideInTime = np.copy(self.leftInTime)
@@ -280,16 +408,44 @@ class ReversalBehaviorData(BehaviorData):
     def find_boundaries_each_block(self):
         # FIXME: for efficiency, check if lastTrialEachBlock already exists
         blockBoundaries = np.flatnonzero(np.diff(self['CurrentBlock']))
+        #blockBoundaries = np.flatnonzero(np.diff(self['CurrentBlock'][0:self['nTrials']]))
+        #1/0
         self.lastTrialEachBlock = np.hstack((blockBoundaries,self['nTrials']))
         self.firstTrialEachBlock = np.hstack((0,self.lastTrialEachBlock[:-1]+1))
+        self.eachBlockID = self['CurrentBlock'][self.firstTrialEachBlock]
         self['nBlocks'] = len(self.lastTrialEachBlock)
     def find_trials_each_block(self):
         self.find_boundaries_each_block()
-        self.trialsEachBlock = np.zeros((self['nTrials'],self['nBlocks']),dtype='bool')
+        self.trialsEachBlock = np.zeros((self['nTrials'],self['nBlocks']),dtype=bool)
+        self.blockEachTrial = np.empty(self['nTrials'],dtype=int)
         for block in range(self['nBlocks']):
             bSlice = slice(self.firstTrialEachBlock[block],self.lastTrialEachBlock[block]+1)
             self.trialsEachBlock[bSlice,block]=True
-        
+            self.blockEachTrial[bSlice]=block
+    def find_trial_index_each_block(self):
+        '''Produces an index for each valid trial (on each block)
+        It starts at 0, and invalid trials are set to -1
+        '''
+        if not hasattr(self,'trialsEachBlock'):
+            self.find_trials_each_block()
+        validTrials = ~self.early
+        validEachBlock = (self.trialsEachBlock & validTrials[:,np.newaxis])
+        indexValidEachBlockMat = np.cumsum(validEachBlock,axis=0).astype(int)
+        indexValidEachBlockMat[~validEachBlock]=0
+        # FIXME: is it necessary to convert to int?
+        indsValid = np.sum(indexValidEachBlockMat,axis=1)-1
+        self.indexValidEachBlock = np.ma.masked_array(indsValid,mask=~validTrials)
+        ###self.indexValidEachBlock[~validTrials] = 9999
+        '''
+        self.indexValidEachBlock = np.tile(-1,self['nTrials'])
+        for col in range(indexValidEachBlockMat.shape[1]):
+            self.indexValidEachBlock[validEachBlock[:,col]] = \
+                indexValidEachBlockMat[validEachBlock[:,col],col]
+        '''
+    def plot_summary(self):
+        import behavioranalysis
+        behavioranalysis.plot_summary(self)
+
 
 class TuningBehaviorData(BehaviorData):
     '''This class inherits BehaviorData and adds methods specific to tuningcurve protocol.'''
@@ -305,9 +461,41 @@ class TuningBehaviorData(BehaviorData):
         leftPokeInID    = 2 ### WARNING!!! HARDCODED
         rightPokeInID   = 4 ### WARNING!!! HARDCODED
         self.trialStartTime = self.time_of_state_transition('state_0','send_trial_info')
-        self.targetOnsetTime = self.time_of_state_transition('continue_trial','play_sound')
+        #self.targetOnsetTime = self.time_of_state_transition('continue_trial','play_sound')
+        self.targetOnsetTime = self.time_of_state_transition('','play_sound')
 
 
+if __name__ == "__main__":
+    CASE = 2
+    if CASE==1:
+        behavFile = '/var/data/BControlData/Data/santiago/saja100/data_saja_tuningcurve_santiago_saja100_20111119a.h5'
+        behavData = BehaviorData(behavFile)
+        #pp(behavData['RawEvents'][:10,:])
+        behavData.print_events(range(24))
+        print behavData.time_of_state_transition('','play_sound')[:4]
+    elif CASE==2:
+        behavFile = '/var/data/BControlData/Data/santiago/saja099/data_saja_reversal_santiago_saja099_20110405a.h5'
+        behavData = ReversalBehaviorData(behavFile)
+        behavData.extract_event_times()
+        behavData.find_trials_each_type()
+        behavData.find_trial_index_each_block()
+        '''
+        validEachBlock = (behavData.trialsEachBlock & ~behavData.early[:,np.newaxis])
+        indexValid = np.cumsum(validEachBlock,axis=0)
+        indexValid[~validEachBlock] = -1
+        #    behavData.trialsEachBlock*
+        '''
+
+
+'''
+behavFile = '/var/data/BControlData/Data/santiago/saja100/data_saja_tuningcurve_santiago_saja100_20111103a.h5'
+reload(loadbehavior)
+behavData = loadbehavior.TuningBehaviorData(behavFile)
+behavData.time_of_state_transition('state_0','send_trial_info')
+behavData.time_of_state_transition('','play_sound')
+behavData.extract_event_times()
+
+'''
 
 '''
 behavData['RawEvents'][:20,:]
