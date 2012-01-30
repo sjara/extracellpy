@@ -1,0 +1,10 @@
+#+STARTUP: hidestars
+#+STARTUP: odd
+
+* TO DO:
+*** TODO Save behavData properly
+*** TODO Quick way of loading ephys locked spikes for a cell
+*** TODO Enable going back when looping through cells
+*** TODO settings.py to define folders for data
+*** TODO profile code, specially PSTH
+
