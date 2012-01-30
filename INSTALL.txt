@@ -1,0 +1,83 @@
+ ___________________________
+
+   INSTALLING extracellpy
+ ___________________________
+
+
+* SUMMARY:
+  To use 'extracellpy' you need:
+- Python (and a few Python modules) installed in your computer.
+- Have the 'extracellpy' directory in your Python path.
+- For loading Neuralynx data, you may need to compile modules in
+  cLoadNeuralynx (see below).
+
+  For the GUI-oriented we recommend the use of Spyder, a Python
+  development environment similar to Matlab.
+  http://packages.python.org/spyder/
+
+  For the console-oriented we recommend IPython.
+  http://ipython.org/
+
+
+* UBUNTU LINUX INSTALLATION:
+- Install Python, numpy and matplotlib.
+- Download and place 'extracellpy' in a directory of choice,
+  for example ~/src/
+- Add this directory to your Python path, by adding the following
+  line to your ~/.bashrc :
+  export PYTHONPATH=$PYTHONPATH:~/src
+- If modules for loading Neuralynx data are needed see instructions
+  below on "COMPILING MODULE FOR LOADING DATA"
+
+
+* WINDOWS INSTALLATION:
+- We recommend the use of Spyder (which provides an interface similar
+  to Matlab). This program is included in the pthonxy package.
+- NOTE: Spyder is now distributed as a stand-alone program:
+  http://code.google.com/p/spyderlib/downloads/list
+  But we haven't tested if it contains everything needed for extracellpy.
+- When installing from pythonxy (www.pythonxy.com) include/exclude the
+  following:
+  EXCLUDE:
+    VTK (jinja2?)
+    Eclipse
+    Others (all) 
+  INCLUDE:
+    Python 2.6.6 (by default)
+    xy, xydoc, PyQt, spyder, formlayout, QtHelp, PyQwt, NumPy, SciPy,
+    numexpr, guidata, guiqwt, matplotlib, gnuplot, PIL, IPython,
+    Pyreadline, SetupTools, PyTables, vitables, h5py, Pywin32, py2exe,
+    Sphinx, docutools, jinja2, pygments, ReportLab, nose, pylint 
+- Extract extracellpy into c:\Python26\lib\site-packages\
+- Modify extracellpy\sessionanalysis.py to reflect the paths for
+  electrophys and behavior data.
+
+
+
+* COMPILING MODULE FOR LOADING DATA:
+  It requires Cython 0.14
+
+= ON LINUX:
+  cd ~/src/extracellpy/cLoadNeuralynx/
+  make
+- Or the individual steps:
+  gcc -c -O2 -Wall loadNeuralynx.c
+  python setup.py build_ext --inplace
+- This should create cLoadNeuralynx.pyx which should be copied to the
+  'extracellpy' directory.
+
+= ON WINDOWS:
+- You can use mingw32 (included in pythonxy) as compiler:
+  gcc -c -O2 -Wall loadNeuralynx.c
+  python setup.py build_ext --inplace --compiler=mingw32
+- This should create cLoadNeuralynx.pyd which should be copied to the
+  'extracellpy' directory.
+
+= ON MAC:
+- Apple's XCode includes gcc, so you can run:
+  gcc -c -O2 -Wall loadNeuralynx.c
+  (some warnings about '%d' will be corrected later)
+  export C_INCLUDE_PATH=/opt/local/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/numpy/core/include
+  python2.7 setup.py build_ext --inplace
+    
+

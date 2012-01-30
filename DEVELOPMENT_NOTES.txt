@@ -1,0 +1,39 @@
+___________________________________________________________________________
+
+ These are notes and tips collected during the development of extracellpy
+___________________________________________________________________________
+
+
+- When compiling cLoadNeuralynx for Win32 I needed to add lines to setup.py according to:
+  http://stackoverflow.com/questions/2379898/make-distutils-look-for-numpy-header-files-in-the-correct-place
+
+- On 2011-08-04: I was having an error on HAVE_HYPOT
+  http://groups.google.com/group/cython-users/browse_thread/thread/13277c090ed8b6a3
+  SOLUTION:
+  #define HAVE_HYPOT 0
+  (this seems to be fixed on newer versions of Cython)
+
+
+SETTING UP REPOSITORY ON GITHUB
+
+- https://github.com/repositories/new
+  cd ~/src/extracellpy
+  git remote add origin git@github.com:sjara/extracellpy.git
+  git push -u origin master
+
+------------------------------------------
+OLDER NOTES:
+
+OTHER THINGS NEEDED (WIN32):
+- Matplotlib
+- PyTables (to load behavior)  IT DOES NOT WORK!
+- Numexpr (for PyTables)
+
+  - Python > Numpy
+  - Python > SciPy
+  - Python > Spyder (very nice IDE)
+  - Python > PyQt
+  - Python > Cython (compiling Cython modules)
+  - Other > MinGW (compiling Cython modules)
+
+ You need to copy cLoadNeuralynx.pyd from extracellpy\cLoadNeuralynx into extracellpy\ 
