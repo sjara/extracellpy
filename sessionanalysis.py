@@ -1,28 +1,24 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-'''Functions for analysis of eletrophysiology/behavior session.
+'''
+Functions for analysis of electrophysiology/behavior session.
 '''
 
-#from pylab import *
-from extracellpy import loadneuralynx, spikesanalysis
+from extracellpy import settings
+reload(settings) # Force reload
+from extracellpy import loadneuralynx
+from extracellpy import spikesanalysis
+from extracellpy import loadbehavior
 from extracellpy import colorpalette as cp
 import os, sys
 import numpy as np
 
-try:
-    from extracellpy import loadbehavior as loadbehavior
-    reload(loadbehavior)
-except:
-    print 'Importing loadbehavior did not work.'
-
-reload(loadneuralynx)
-
 __author__ = 'Santiago Jaramillo'
 __version__ = '0.1'
 
-BEHAVIORPATH = '/var/data/BControlData/Data/santiago'
-EPHYSPATH = '/var/data/neuralynx'
+BEHAVIORPATH = settings.BEHAVIOR_PATH
+EPHYSPATH = settings.EPHYS_PATH
 
 bitTRIALIND_DEFAULT = 3      # TrialIndicator (bitID starting from 0)
 bitPHOTOSTIMIND = 4  # PhotoStimIndicator (bitID starting from 0)
@@ -519,18 +515,17 @@ if __name__ == "__main__":
     import celldatabase
     reload(celldatabase)
 
-    CASE = 2
+    CASE = 1
 
     if CASE == 1:
+        import pylab as plt
         animalName = 'saja099'
         ephysSession = '2011-04-18_20-44-49'
         behavSession = '20110418a'
         tetrode = 1
         cluster = 3
         onecell = celldatabase.CellInfo(animalName,ephysSession,behavSession,tetrode,cluster)
-        #(behavData,trialEvents) = load_cell_reversal(onecell)
-        #(behavData,trialEvents) = load_cell_reversal(onecell,onecell,behavData,trialEvents)
-        #print(behavData)
+        print 'Loading %s ...'%(onecell)
         (behavData,trialEvents,dataTT,spikeInds) = load_cell_reversal(onecell)
         timeRange = np.array([-0.3,0.9])
         trialsOfInterest = range(300)
@@ -538,12 +533,10 @@ if __name__ == "__main__":
         (spikeTimesFromEventOnset,trialIndexForEachSpike,indexLimitsEachTrial) = \
             spikesanalysis.eventlocked_spiketimes(dataTT.timestamps[spikeInds],
                                                   eventOfInterest,timeRange)
-        '''
-        pR = plot(1e3*spikeTimesFromEventOnset,trialIndexForEachSpike,'.k')
-        pR[0].set_markersize(markerSize)
-        draw()
-        show()
-        '''
+        pR, = plt.plot(1e3*spikeTimesFromEventOnset,trialIndexForEachSpike,'.k')
+        pR.set_markersize(2)
+        plt.draw()
+        plt.show()
     if CASE==2:
         animalName   = 'saja100'
         ephysSession = '2011-10-26_11-57-31'

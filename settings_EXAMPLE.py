@@ -3,3 +3,5 @@
 General settings for extracellpy.
 '''
 
+BEHAVIOR_PATH = '/var/data/BControlData/Data/santiago'
+EPHYS_PATH = '/var/data/neuralynx'

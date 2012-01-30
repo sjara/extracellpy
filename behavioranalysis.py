@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-'''Tools for analyzing behavioral data.
+'''
+Tools for analyzing behavioral data.
 '''
 
 from pylab import *
@@ -12,11 +13,11 @@ import cPickle as pickle
 import gzip
 
 __author__ = 'Santiago Jaramillo'
-__version__ = ''
+__version__ = '0.1'
 
-BEHAVIORPATH = '/var/data/BControlData/Data/santiago'
+BEHAVIORPATH = settings.BEHAVIOR_PATH
 
-   
+
 def parse_isodate(dateStr):
     '''Convert ISO-formatted date (e.g., 2011-12-31) to python date.    
     '''
@@ -24,10 +25,9 @@ def parse_isodate(dateStr):
     dateElems = [int(x) for x in dateElems]
     return datetime.date(*dateElems)
 
-def reshape_by_session(allBehavData):
+def reshape_by_session(allBehavData,maxNtrials=1500):
     '''Reshape behavior data from many sessions, keeping only valid trials
     and organizing in masked arrays where each column is one session'''
-    maxNtrials = 1500
     nSessions = unique(allBehavData['sessionID'])[-1]
     allBehavDataPerSession = {}
     mask = np.ones((maxNtrials,nSessions),dtype=bool)
