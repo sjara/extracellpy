@@ -5,6 +5,7 @@
 Tools for analyzing behavioral data.
 '''
 
+import settings
 from pylab import *
 import numpy as np
 import datetime
