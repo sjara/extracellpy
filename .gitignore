@@ -3,5 +3,17 @@
 \#*
 .emacs*
 old
+build
+macosx
+tmp
 
+# *.pyd
+# *.so
 /settings.py
+/cLoadNeuralynx/loadNeuralynxOLD.c
+/cLoadNeuralynx/old20110118_cLoadNeuralynx.so
+/cLoadNeuralynx.so
+/cLoadNeuralynx/cLoadNeuralynx.c
+/cLoadNeuralynx/cLoadNeuralynx.pyd
+/cLoadNeuralynx/cLoadNeuralynx.so
+/cLoadNeuralynx/loadNeuralynx.o
