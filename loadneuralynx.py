@@ -48,31 +48,40 @@ class DataCont(cLoadNeuralynx.DataCont):
             objStrings.append('%s: %s\n'%(key,str(value)))
         return ''.join(objStrings)
         '''
-    def samples_in_time_range(self,timeRange):
-        '''Returns an array of indexes for sample within timeRange
-        timeRange should be in microseconds'''
+    def samples_in_time_range(self,timeRangeInMicroSec):
+        '''Returns an array of indexes for sample within timeRangeInMicroSec
+        timeRangeInMicroSec should be in microseconds'''
         samplesPerRecord = len(self.samples)/self.nRecords
-        samplesPerRecord = len(self.samples)/self.nRecords
-        timeRange = np.array(timeRange,dtype='uint64')
-        recordRange = np.searchsorted(self.timestamps,timeRange)-1
-        timeFromRecordStart = (timeRange-self.timestamps[recordRange])
-        sampleInRecord = 1e-6*timeFromRecordStart*self.samplingRate
-        # Note: the next line effectively takes the floor() of sampleInRecord
+        print timeRangeInMicroSec
+        timeRangeInMicroSec = np.array(np.round(timeRangeInMicroSec),dtype='uint64')
+        recordRange = np.searchsorted(self.timestamps,timeRangeInMicroSec)-1
+        timeFromRecordStart = (timeRangeInMicroSec-self.timestamps[recordRange])
+
+        sampleInRecord = np.round(1e-6*timeFromRecordStart*self.samplingRate)
         sampleRange = recordRange*samplesPerRecord + sampleInRecord.astype(long)
-        sampleIndexes = np.arange(*sampleRange)
+        sampleIndexes = np.arange(sampleRange[0],sampleRange[-1]+1)
         return sampleIndexes
     def lock_to_event(self,eventOnsetTimes,timeRange):
         '''Make matrix of LFP traces locked to stimulus'''
         if np.any(np.diff(np.diff(self.timestamps))):
             print('Not all LFP records are contiguous. lock_to_event() may not work properly.')
         timeVec = np.arange(timeRange[0],timeRange[-1],1/self.samplingRate)
-        firstSample = int(round(timeRange[0]*self.samplingRate))
         nSamples = len(timeVec)
         nTrials = len(eventOnsetTimes)
-        samplesRange = np.arange(nSamples,dtype='int')+firstSample
         lockedLFP = np.empty((nTrials,nSamples))
+        for inde,eventTime in enumerate(eventOnsetTimes):
+            if not np.isnan(eventTime):
+                thisTrialTimeRange = eventTime+timeRange
+                sampleIndexes = self.samples_in_time_range(1e6*thisTrialTimeRange)
+                ##print '%d %d'%(nSamples,len(sampleIndexes)) ######################### DEBUG
+                ####### FIXME: HORRIBLE HACK to avoid errors about sized
+                if len(sampleIndexes)!=nSamples:
+                    sampleIndexes = sampleIndexes[:-1]
+                lockedLFP[inde,:] = self.samples[sampleIndexes]
+            else:
+                lockedLFP[inde,:] = np.NaN
         return (lockedLFP,timeVec)
-    def eventlocked(self,eventOnsetTimes,timeRange):
+    def eventlockedOLD(self,eventOnsetTimes,timeRange):
         print('This function is now OBSOLETE!!! see lock_to_event()')
         wintoplot=np.arange(-20000,40000)
         timeVec = np.arange(timeRange[0],timeRange[-1],1/self.samplingRate)
