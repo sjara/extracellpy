@@ -181,5 +181,13 @@ def read_clu():
 '''
 
 if __name__=='__main__':
-    data=DataTetrode('/var/tmp/TT0.ntt')
-
+    CASE = 2
+    if CASE==1:
+        data=DataTetrode('/var/tmp/TT0.ntt')
+    elif CASE==2:
+        import pylab as plt
+        dataLFP=DataCont('/var/data/neuralynx/saja125/2012-02-02_17-16-59/CSC17.ncs')
+        plt.clf()
+        plt.plot(dataLFP.samples[:10000])
+        plt.draw()
+        plt.show()
