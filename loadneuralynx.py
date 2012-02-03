@@ -19,16 +19,16 @@ class DataCont(cLoadNeuralynx.DataCont):
     Reading the data is implemented by the parent class from cLoadNeuralynx.'''
     def __init__(self,fileName):
         cLoadNeuralynx.DataCont.__init__(self,fileName,readTS=True)
-        self.__test_integrity()
+        self._test_integrity()
         patt = re.compile(r'-SamplingFrequency (\d+\.\d+)')
         self.samplingRate = float(patt.search(self.header).groups()[0])
         self.firstTimestamp = self.timestamps[0]
-        self.time = self.generate_timevec()
-    def __test_integrity(self):
+        #self.time = self._generate_timevec()
+    def _test_integrity(self):
         if np.any(np.diff(np.diff(self.timestamps))):
             raise TypeError('Not all records are contiguous. Packets lost?')
-    def generate_timevec(self):
-        '''This may be a more complicated than necessary: I'm creating an equally
+    def _generate_timevec(self):
+        '''This may be more complicated than necessary: I'm creating an equally
         spaced vector between each record timestamp.
         '''
         dRec = self.timestamps[1]-self.timestamps[0]
@@ -38,7 +38,7 @@ class DataCont(cLoadNeuralynx.DataCont):
         interimTimestamps = np.linspace(0,dRec,samplesPerRecord,endpoint=False).astype(timeArray.dtype)
         timeVector = timeArray+interimTimestamps
         return timeVector.flatten()
-    def __parse_header(self):
+    def _parse_header(self):
         pass
     #def __repr__(self):
     #    pass
@@ -48,8 +48,32 @@ class DataCont(cLoadNeuralynx.DataCont):
             objStrings.append('%s: %s\n'%(key,str(value)))
         return ''.join(objStrings)
         '''
-    def eventlocked(self,eventOnsetTimes,timeRange):
+    def samples_in_time_range(self,timeRange):
+        '''Returns an array of indexes for sample within timeRange
+        timeRange should be in microseconds'''
+        samplesPerRecord = len(self.samples)/self.nRecords
+        samplesPerRecord = len(self.samples)/self.nRecords
+        timeRange = np.array(timeRange,dtype='uint64')
+        recordRange = np.searchsorted(self.timestamps,timeRange)-1
+        timeFromRecordStart = (timeRange-self.timestamps[recordRange])
+        sampleInRecord = 1e-6*timeFromRecordStart*self.samplingRate
+        # Note: the next line effectively takes the floor() of sampleInRecord
+        sampleRange = recordRange*samplesPerRecord + sampleInRecord.astype(long)
+        sampleIndexes = np.arange(*sampleRange)
+        return sampleIndexes
+    def lock_to_event(self,eventOnsetTimes,timeRange):
         '''Make matrix of LFP traces locked to stimulus'''
+        if np.any(np.diff(np.diff(self.timestamps))):
+            print('Not all LFP records are contiguous. lock_to_event() may not work properly.')
+        timeVec = np.arange(timeRange[0],timeRange[-1],1/self.samplingRate)
+        firstSample = int(round(timeRange[0]*self.samplingRate))
+        nSamples = len(timeVec)
+        nTrials = len(eventOnsetTimes)
+        samplesRange = np.arange(nSamples,dtype='int')+firstSample
+        lockedLFP = np.empty((nTrials,nSamples))
+        return (lockedLFP,timeVec)
+    def eventlocked(self,eventOnsetTimes,timeRange):
+        print('This function is now OBSOLETE!!! see lock_to_event()')
         wintoplot=np.arange(-20000,40000)
         timeVec = np.arange(timeRange[0],timeRange[-1],1/self.samplingRate)
         firstSample = int(round(timeRange[0]*self.samplingRate))
@@ -66,6 +90,8 @@ class DataCont(cLoadNeuralynx.DataCont):
             else:
                 lockedLFP[inde,:] = np.NaN
         return (lockedLFP,timeVec)
+    '''
+    '''
 
 class DataTetrode(cLoadNeuralynx.DataTetrode):
     '''Access to Neuralynx NTT files containing tetrode data.
@@ -181,13 +207,31 @@ def read_clu():
 '''
 
 if __name__=='__main__':
-    CASE = 2
+    CASE = 3
     if CASE==1:
         data=DataTetrode('/var/tmp/TT0.ntt')
     elif CASE==2:
+        '''Load and plot LFP'''
         import pylab as plt
-        dataLFP=DataCont('/var/data/neuralynx/saja125/2012-02-02_17-16-59/CSC17.ncs')
+        #dataLFP=DataCont('/var/data/neuralynx/saja125/2012-02-02_17-16-59/CSC17.ncs') # small
+        dataLFP=DataCont('/var/data/neuralynx/saja125/2012-02-02_16-33-29/CSC17.ncs') # large
+        # lock_to_event
         plt.clf()
         plt.plot(dataLFP.samples[:10000])
         plt.draw()
         plt.show()
+    elif CASE==3:
+        import pylab as plt
+        dataLFP=DataCont('/var/data/neuralynx/saja125/2012-02-02_17-16-59/CSC27.ncs')
+        trialOnsetTime = np.array([ 3356.156999,  3361.407959,  3365.967437,  3370.861073])
+        timeRange = [2949053060-33, 2949053060+34]  #2949053060
+        print dataLFP.samples_in_time_range(timeRange)
+
+        '''
+        (lockedLFP,timeVec) = dataLFP.eventlocked(trialOnsetTime,[0.38,0.50])
+        plt.clf()
+        plt.plot(timeVec,lockedLFP.T)
+        plt.draw()
+        plt.show()
+        '''
+        
