@@ -52,7 +52,6 @@ class DataCont(cLoadNeuralynx.DataCont):
         '''Returns an array of indexes for sample within timeRangeInMicroSec
         timeRangeInMicroSec should be in microseconds'''
         samplesPerRecord = len(self.samples)/self.nRecords
-        print timeRangeInMicroSec
         timeRangeInMicroSec = np.array(np.round(timeRangeInMicroSec),dtype='uint64')
         recordRange = np.searchsorted(self.timestamps,timeRangeInMicroSec)-1
         timeFromRecordStart = (timeRangeInMicroSec-self.timestamps[recordRange])
