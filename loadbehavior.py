@@ -434,8 +434,8 @@ class ReversalBehaviorData(BehaviorData):
         indexValidEachBlockMat[~validEachBlock]=0
         # FIXME: is it necessary to convert to int?
         indsValid = np.sum(indexValidEachBlockMat,axis=1)-1
-        self.indexValidEachBlock = np.ma.masked_array(indsValid,mask=~validTrials)
-        ###self.indexValidEachBlock[~validTrials] = 9999
+        #self.indexValidEachBlock = np.ma.masked_array(indsValid,mask=~validTrials)
+        self.indexValidEachBlock = indsValid
         '''
         self.indexValidEachBlock = np.tile(-1,self['nTrials'])
         for col in range(indexValidEachBlockMat.shape[1]):
