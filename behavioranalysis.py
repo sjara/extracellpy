@@ -29,7 +29,7 @@ def parse_isodate(dateStr):
 def reshape_by_session(allBehavData,maxNtrials=1500):
     '''Reshape behavior data from many sessions, keeping only valid trials
     and organizing in masked arrays where each column is one session'''
-    nSessions = unique(allBehavData['sessionID'])[-1]
+    nSessions = len(unique(allBehavData['sessionID']))
     allBehavDataPerSession = {}
     mask = np.ones((maxNtrials,nSessions),dtype=bool)
     for key in allBehavData.keys():
