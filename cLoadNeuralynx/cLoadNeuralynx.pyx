@@ -64,7 +64,13 @@ def read_ncs(fileName,readTS=False):
 
 
 class DataCont(object):
-    '''Access Neuralynx NCS files containing continuous data.'''
+    '''Access Neuralynx NCS files containing continuous data.
+
+    FIXME: I'm currently making copies of the results of PyArray_SimpleNewFromData,
+           because otherwise I don't know how to deallocate the memory of these arrays
+           and I get a memory leak. Maybe the solution is related to the way I am
+           allocating space on readNCS (loadNeuralynx.c).
+    '''
     def __init__(self,fileName,readTS=True):
         cdef DataNCS c_data        # Define C structure to contain the data
         c_data = readNCS(fileName) # Read data from file
@@ -75,12 +81,15 @@ class DataCont(object):
         cdef np.npy_intp c_nSamples = <np.npy_intp>self.nSamples
         cdef np.npy_intp c_nRecords = <np.npy_intp>self.nRecords
         if readTS:
-            self.timestamps = np.PyArray_SimpleNewFromData(1, &c_nRecords, np.NPY_ULONGLONG,
-                                                           <void *>c_data.timestamps)
+            self.timestamps = np.copy(np.PyArray_SimpleNewFromData(1, &c_nRecords, np.NPY_ULONGLONG,
+                                                                   <void *>c_data.timestamps))
         else:
             self.timestamps = None
-        self.samples = np.PyArray_SimpleNewFromData(1, &c_nSamples, np.NPY_SHORT,
-                                                    <void *>c_data.samples)
+        self.samples = np.copy(np.PyArray_SimpleNewFromData(1, &c_nSamples, np.NPY_SHORT,
+                                                            <void *>c_data.samples))
+        free(c_data.header) # Deallocates, after a copy has been made
+        free(c_data.timestamps) # Deallocates, after a copy has been made
+        free(c_data.samples) # Deallocates, after a copy has been made
 
 class DataTetrode(object):
     '''Access to Neuralynx NTT files containing tetrode data.
@@ -119,50 +128,3 @@ class DataTetrode(object):
         #free(c_data) # Cannot assign type 'DataNTT' to 'void *'
         #np.PyArray_free(c_data.timestamps)  # DOES NOT WORK (type of pointer)
 
-'''
-from struct import unpack
-
-class DataEvents(object):
-    ' ''Access to Neuralynx NEV files containing events data
-       (pure python implementation)'' '
-    def __init__(self,fileName,readStrings=False):
-        self.filename = fileName
-        self._readStrings = readStrings
-        self.timestamps = None
-        self.eventID = None
-        self.valueTTL = None
-        self.eventString = None
-        self.read_nev(fileName)
-
-    def read_nev(self,fileName):
-        HEADERSIZE = 16384 # 16kB
-        INFOSIZE = (16+16+16+64 + 5*16 + 32*8)//8
-        STRINGSIZE = 128
-        RECORDSIZE = INFOSIZE + STRINGSIZE
-
-        fid = open(fileName,'rb')
-        header = fid.read(HEADERSIZE)
-        # -- Count number of records --
-        currentPos = fid.tell()
-        fid.seek(0,2) # Go to the end of the file
-        fileSize = fid.tell()
-        fid.seek(currentPos)
-        nRecords = (fileSize-HEADERSIZE)//RECORDSIZE
-        self.timestamps = np.empty(nRecords,dtype='uint64')
-        self.eventID = np.empty(nRecords,dtype='int16')
-        self.valueTTL = np.empty(nRecords,dtype='uint16')
-        if self._readStrings:
-            self.eventString = np.empty((nRecords,STRINGSIZE),dtype='int8')
-
-        infoFormat = '<hhhQhHhhh' + 8*'l'
-        for indrec in range(nRecords):
-            oneRecord = fid.read(RECORDSIZE)
-            unpackedRecord = unpack(infoFormat,oneRecord[0:INFOSIZE])
-            self.timestamps[indrec] = unpackedRecord[3]
-            self.eventID[indrec] = unpackedRecord[4]
-            self.valueTTL[indrec] = unpackedRecord[5]
-            if self._readStrings:
-                self.eventString[indrec,:] = np.fromstring(oneRecord[INFOSIZE:],dtype='int8')
-        fid.close()
-
-'''
