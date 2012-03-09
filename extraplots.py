@@ -10,7 +10,7 @@ plotintervalbars: Plot with thin errorbars given by interval (not errors).
 import matplotlib.pyplot as mpl
 import numpy as np
 
-def boxoff(ax,keep='left'):
+def boxoff(ax,keep='left',yaxis=True):
     ax.spines['top'].set_visible(False)
     if keep=='left':
         ax.spines['right'].set_visible(False)
@@ -20,7 +20,14 @@ def boxoff(ax,keep='left'):
     ytlines = ax.get_yticklines()
     for t in xtlines[1::2]+ytlines[1::2]:
         t.set_visible(False)
+    if not yaxis:
+        ax.spines['left'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ytlines = ax.get_yticklines()
+        for t in ytlines:
+            t.set_visible(False)
 
+        
 def set_log_ticks(ax,xTickValues,axis='x'):
     xTickLogValues = np.log10(xTickValues);
     xTickLabels = ['%d'%(1e-3*xt) for xt in xTickValues];
@@ -38,6 +45,24 @@ def set_logy_ticks(ax,xTickValues):
     ax.set_yticklabels(xTickLabels)
 
 
+def set_axes_color(ax,axColor):
+    import matplotlib
+    for child in ax.get_children():
+        if isinstance(child, matplotlib.axis.XAxis) or isinstance(child, matplotlib.axis.YAxis):
+            for gchild in child.get_children():
+                try:
+                    gchild.set_color(axColor)
+                except AttributeError:
+                    for ggchild in gchild.get_children():
+                        ggchild.set_color(axColor)
+        if isinstance(child, matplotlib.spines.Spine):
+            child.set_color(axColor)
+
+def set_ticks_fontsize(ax,fontSize):
+    mpl.setp(ax.get_xticklabels(),fontsize=fontSize)
+    mpl.setp(ax.get_yticklabels(),fontsize=fontSize)
+
+            
 def plotintervalbars(Xvalues,Yvalues,Yinterval,PlotColor='k'):
     '''Show a plot with big markers and thin errorbars.
     (hpmain,hpcap,hperr) = plotintervalbars(Xvalues,Yvalues,Yinterval,PlotColor)
@@ -129,7 +154,8 @@ def rasterplot(spikeTimesFromEventOnset,indexLimitsEachTrial,timeRange,trialsEac
     pRaster = []
     for indcond in range(nCond):
         pRasterOne, = plt.plot(spikeTimesEachCond[indcond],
-                            trialIndexEachCond[indcond]+firstTrialEachCond[indcond],'.k')
+                            trialIndexEachCond[indcond]+firstTrialEachCond[indcond],'.k',
+                            rasterized=True)
         pRaster.append(pRasterOne)
         plt.hold(True)
         ypos = [firstTrialEachCond[indcond],firstTrialEachCond[indcond],
@@ -171,10 +197,10 @@ def loop_keycontrol(fig,indrange,ind):
         #print e.key
         if e.key in ['q','escape']:
             raise StopIteration
-        elif e.key in ['right','.','d']:
+        elif e.key in ['right','.','d','>']:
             newind = min(ind+1,indrange[-1])
             break
-        elif e.key in ['left',',','a']:
+        elif e.key in ['left',',','a','<']:
             newind = max(ind-1,indrange[0])
             break
     return newind

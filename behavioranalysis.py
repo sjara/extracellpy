@@ -74,7 +74,8 @@ def reshape_by_session_OLD(allBehavData):
     
 
 def save_many_sessions_reversal(animalNames,datesRange,outputFile,paramsToSave,
-                                dtypes=[],dataClass=None,datesList=[],compression=None):
+                                dtypes=[],dataClass=None,datesList=[],compression=None,
+                                saveDate=False):
     '''Save selected parameters from a set of sessions.
     Example parameters:
     animalNames = ['saja065','saja099','saja101']
@@ -104,14 +105,15 @@ def save_many_sessions_reversal(animalNames,datesRange,outputFile,paramsToSave,
     allBehavData = {}
     allBehavData['sessionID'] = np.empty(0,dtype='i2')
     allBehavData['animalID'] = np.empty(0,dtype='i1')
+    sessionArray = []
     inds = 0
-    for key in (paramsToSave):
-        allBehavData[key] = np.empty(0)
     if not dtypes:
         for indp,key in enumerate(paramsToSave):
             pass
             # FIXME: Need to find dtype for each
             #dtypes.append(behavData[key].dtype)
+    for key,dtype in zip(paramsToSave,dtypes):
+        allBehavData[key] = np.empty(0,dtype=dtype)
     for inda in range(nAnimals):
         animalName = animalNames[inda]
         for indd,oneDate in enumerate(allDates):
@@ -124,8 +126,9 @@ def save_many_sessions_reversal(animalNames,datesRange,outputFile,paramsToSave,
             except IOError:
                 print('No file named %s'%(behavFile))
                 continue
-            print 'Loaded %s'%behavFileName
+            print 'Loaded %s'%behavFile
             nTrials = behavData['nTrials']
+            sessionArray.append(behavSession)
             behavData.extract_event_times() # This is needed (it shouldn't be)
             behavData.find_trials_each_type()
             behavData.find_trial_index_each_block()
@@ -145,6 +148,8 @@ def save_many_sessions_reversal(animalNames,datesRange,outputFile,paramsToSave,
             allBehavData['animalID'] = np.concatenate((allBehavData['animalID'],
                                                         np.tile(inda,nTrials)))
             inds += 1
+    if saveDate:
+        allBehavData['sessionName'] = np.array(sessionArray)
     if outputFile:
         save_dict_as_HDF5(outputFile,allBehavData,compression=compression)
     return allBehavData
@@ -475,41 +480,45 @@ def negloglikepsych(theta,xVec,nTrials,nHits):
     #print totalLikelihood
     return totalLikelihood
 
-def plot_psychcurve_fit_varsize(xValues,nTrials,nHits,curveParams,color='k'):
+def plot_psychcurve_fit_varsize(xValues,nTrials,nHits,curveParams=[],color='k'):
     '''
     Plot average performance for each value and fitted curve.
     '''
     yValues = nHits.astype(float)/nTrials
     xRange = xValues[-1]-xValues[1]
-    fitxval = np.linspace(xValues[0]-0.1*xRange,xValues[-1]+0.1*xRange,40)
-    fityval = psychfun(fitxval,*curveParams)
     mSize = nTrials.astype(float)/np.max(nTrials)
     for ind in range(len(xValues)):
         hp=plot(xValues[ind],yValues[ind],'o',mfc=color)
         setp(hp,mec=color,markersize=16*(mSize[ind]**0.2))
         hold(True)
-    hp = plot(fitxval,fityval,'-',linewidth=2,color=color)
+    if curveParams:
+        fitxval = np.linspace(xValues[0]-0.1*xRange,xValues[-1]+0.1*xRange,40)
+        fityval = psychfun(fitxval,*curveParams)
+        hp = plot(fitxval,fityval,'-',linewidth=2,color=color)
     ylim([-0.1,1.1])
     hline = axhline(0.5)
     setp(hline,linestyle=':',color='k')
     #grid(True)
     #hold(False)
     
-def plot_psychcurve_fit(xValues,nTrials,nHits,curveParams,color='k'):
+def plot_psychcurve_fit(xValues,nTrials,nHits,curveParams=[],color='k'):
     '''
     Plot average performance for each value and fitted curve.
     '''
     solidXvalues = np.flatnonzero((nTrials/sum(nTrials).astype(float))>(1.0/len(nTrials)))
     yValues = nHits.astype(float)/nTrials
     xRange = xValues[-1]-xValues[1]
-    fitxval = np.linspace(xValues[0]-0.1*xRange,xValues[-1]+0.1*xRange,40)
-    fityval = psychfun(fitxval,*curveParams)
-    hfit = plot(fitxval,100*fityval,'-',linewidth=2,color=color)
-    hold(True)
+    hfit = []
+    if len(curveParams):
+        fitxval = np.linspace(xValues[0]-0.1*xRange,xValues[-1]+0.1*xRange,40)
+        fityval = psychfun(fitxval,*curveParams)
+        hfit = plot(fitxval,100*fityval,'-',linewidth=2,color=color)
+        hold(True)
     hp = []
     for ind in range(len(xValues)):
         htemp,=plot(xValues[ind],100*yValues[ind],'o',mfc=color)
         hp.append(htemp)
+        hold(True)
     setp(hp,mec=color,mfc='w',mew=2,markersize=6)
     for solid in solidXvalues:
         setp(hp[solid],mfc=color,markersize=8)

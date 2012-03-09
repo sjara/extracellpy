@@ -22,8 +22,13 @@ class DataCont(cLoadNeuralynx.DataCont):
         self._test_integrity()
         patt = re.compile(r'-SamplingFrequency (\d+\.\d+)')
         self.samplingRate = float(patt.search(self.header).groups()[0])
-        self.firstTimestamp = self.timestamps[0]
-        #self.time = self._generate_timevec()
+        '''
+        if len(self.timestamps):
+            self.firstTimestamp = self.timestamps[0]
+        else:
+            self.firstTimestamp = []
+        '''
+        ###self.time = self._generate_timevec()
     def _test_integrity(self):
         if np.any(np.diff(np.diff(self.timestamps))):
             raise TypeError('Not all records are contiguous. Packets lost?')
@@ -48,6 +53,17 @@ class DataCont(cLoadNeuralynx.DataCont):
             objStrings.append('%s: %s\n'%(key,str(value)))
         return ''.join(objStrings)
         '''
+    def time_of_sample(self,sampleInd):
+        samplingRateInMicroSec = 1e-6*self.samplingRate
+        samplesPerRecord = self.nSamples/self.nRecords
+        recordThisSample = sampleInd//samplesPerRecord
+        timeThisRecord = self.timestamps[recordThisSample]
+        firstSampleThisRecord = samplesPerRecord*recordThisSample
+        timeFromRecordStart = (sampleInd-firstSampleThisRecord)/samplingRateInMicroSec
+        timeThisSample = timeFromRecordStart + timeThisRecord
+        timeThisSample = np.array(timeThisSample,dtype=self.timestamps.dtype)
+        return timeThisSample
+
     def samples_in_time_range(self,timeRangeInMicroSec):
         '''Returns an array of indexes for sample within timeRangeInMicroSec
         timeRangeInMicroSec should be in microseconds'''
@@ -206,6 +222,14 @@ def dec2bin(n,space=False):
     return bStr
 
 
+def read_header(dataFile):
+    '''Read (only) the header of a neuralynx file.'''
+    HEADERSIZE = 16384 # in bytes
+    f = open(dataFile, 'r')
+    header = f.read(HEADERSIZE)
+    f.close()
+    return header
+
 '''
 def read_clu():
     cfile='/var/data/neuralynx/saja064/2011-02-04_11-28-09_kk/TT2.clu.1'
@@ -232,14 +256,12 @@ if __name__=='__main__':
         import pylab as plt
         dataLFP=DataCont('/var/data/neuralynx/saja125/2012-02-02_17-16-59/CSC27.ncs')
         trialOnsetTime = np.array([ 3356.156999,  3361.407959,  3365.967437,  3370.861073])
-        timeRange = [2949053060-33, 2949053060+34]  #2949053060
-        print dataLFP.samples_in_time_range(timeRange)
-
-        '''
-        (lockedLFP,timeVec) = dataLFP.eventlocked(trialOnsetTime,[0.38,0.50])
+        #timeRange = [2949053060-33, 2949053060+34]  #2949053060
+        #print dataLFP.samples_in_time_range(timeRange)
+        (lockedLFP,timeVec) = dataLFP.lock_to_event(trialOnsetTime,[0.38,0.50])
         plt.clf()
         plt.plot(timeVec,lockedLFP.T)
         plt.draw()
         plt.show()
-        '''
+
         

@@ -8,7 +8,9 @@ Functions for analysis of electrophysiology/behavior session.
 from extracellpy import settings
 reload(settings) # Force reload
 from extracellpy import loadneuralynx
+reload(loadneuralynx) # Force reload
 from extracellpy import spikesanalysis
+from extracellpy import spikesdetection
 from extracellpy import loadbehavior
 from extracellpy import colorpalette as cp
 import os, sys
@@ -19,6 +21,7 @@ __version__ = '0.1'
 
 BEHAVIORPATH = settings.BEHAVIOR_PATH
 EPHYSPATH = settings.EPHYS_PATH
+EXTRACTED_SPIKES_PATH = settings.EXTRACTED_SPIKES_PATH
 
 bitTRIALIND_DEFAULT = 3      # TrialIndicator (bitID starting from 0)
 bitPHOTOSTIMIND = 4  # PhotoStimIndicator (bitID starting from 0)
@@ -150,6 +153,59 @@ def load_cell_reversal(oneCell,prevCell=None,prevData=None,bitTRIALIND=bitTRIALI
 
     return (behavData,trialEvents,dataTT,spikeInds)
 
+def load_cell_reversal_fromcont(oneCell,prevCell=None,prevData=None,bitTRIALIND=bitTRIALIND_DEFAULT):
+    '''Load behavior and spikes data. Spikes data in this case comes from detected spikes
+    from continuous data.
+    '''
+    #ephysSession = '2011-05-10_17-05-22'
+    #behavSession = '20110510a'
+    animalName = oneCell.animalName
+    ephysSession = oneCell.ephysSession
+    behavSession = oneCell.behavSession
+    tetrode = oneCell.tetrode
+    cluster = oneCell.cluster
+
+    # -- Load events from Neuralynx --
+    if not prevCell or oneCell.ephysSession!=prevCell.ephysSession:
+        dataDir = os.path.join(EPHYSPATH,'%s/%s/'%(animalName,ephysSession))
+        #clustersDir = os.path.join(EPHYSPATH,'%s/%s_kk/'%(animalName,ephysSession))
+        eventsFile = os.path.join(dataDir,'Events.nev')
+        events = loadneuralynx.DataEvents(eventsFile)
+        trialEvents = (events.valueTTL & (1<<bitTRIALIND)) != 0
+        trialStartTimeNL = 1e-6*events.timestamps[trialEvents]
+        #print '******** loading ephys **********'
+        ### NOTE: trialStartTimeNL does not contain the first empty behavior trial.
+        ###       First behavior trial is removed in behavData.align_to_ephys()
+    else:
+        trialEvents = prevData['trialEvents']
+    # -- Load events from behavior --
+    if not prevCell or oneCell.behavSession!=prevCell.behavSession:
+        behavDataDir = os.path.join(BEHAVIORPATH,'%s/'%(animalName))
+        behavFileName = 'data_saja_reversal_santiago_%s_%s.h5'%(animalName,behavSession)
+        behavFile = os.path.join(behavDataDir,behavFileName)
+        behavData = loadbehavior.ReversalBehaviorData(behavFile)
+        behavData.extract_event_times()
+        behavData.find_trials_each_type()
+        behavData.align_to_ephys(trialStartTimeNL)
+        #print '******** loading behavior **********'
+    # -- Load spikes --
+    if not prevCell or oneCell.tetrode!=prevCell.tetrode:
+        spikesDataDir = EXTRACTED_SPIKES_PATH%animalName
+        spikesFileName = '%s_%s_e%02d_spikes.h5'%(animalName,ephysSession,tetrode)
+        spikesFileFull = os.path.join(spikesDataDir,spikesFileName)
+        dataTT = spikesdetection.ExtractedSpikes(spikesFileFull)
+        dataTT.timestamps = dataTT.timestamps.astype(np.float64)*1e-6  # in sec
+    else:
+        dataTT = prevData['dataTT']
+    '''
+    # -- Load clusters --
+    clustersFile = os.path.join(clustersDir,'TT%d.clu.1'%tetrode)
+    dataTT.set_clusters(clustersFile)
+    spikeInds = np.flatnonzero(dataTT.clusters==cluster)
+    '''
+    spikeInds = None
+    return (behavData,trialEvents,dataTT,spikeInds)
+
 def load_mu_reversal(oneSite,prevSite=None,prevData=None,bitTRIALIND=bitTRIALIND_DEFAULT):
     '''Load behavior and spikes data.
     '''
@@ -261,20 +317,28 @@ def load_cell_tuningcurve(oneCell,prevCell=None,prevData=None,bitTRIALIND=bitTRI
     return (behavData,eventsTime,dataTT,spikeInds)
 
 
-def trials_by_condition(behavData,CONDCASE=1,sortby=np.empty(0),outcome='all'):
+def trials_by_condition(behavData,CONDCASE=1,sortby=np.empty(0),outcome='all',selected=[]):
     ''' 
     (trialsEachCond,condInfo) = trials_by_condition(behavData,1)
     '''
+    if len(selected)<1:
+        selected = np.ones(len(behavData.correct),dtype=bool)
     if CONDCASE==1:
         trialsEachCondLabels = ['6.5kHz (L)','14kHz (R)','14kHz (L)','31kHz (R)']
         colorEachCond = [cp.TangoPalette['SkyBlue1'], cp.TangoPalette['Orange2'],
                          cp.TangoPalette['ScarletRed1'], cp.TangoPalette['Plum1']]
         # FIXME: finish implementing this properly
         if outcome=='correct':
+            '''
             g1 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.leftReward),behavData.correct))
             g2 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.rightReward),behavData.correct))
             g3 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.leftReward),behavData.correct))
             g4 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.rightReward),behavData.correct))
+            '''
+            g1 = np.flatnonzero(behavData.lowFreqs & behavData.leftReward & behavData.correct & selected)
+            g2 = np.flatnonzero(behavData.lowFreqs & behavData.rightReward & behavData.correct & selected)
+            g3 = np.flatnonzero(behavData.highFreqs & behavData.leftReward & behavData.correct & selected)
+            g4 = np.flatnonzero(behavData.highFreqs & behavData.rightReward & behavData.correct & selected)
         elif outcome=='error':
             g1 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.leftReward),behavData.error))
             g2 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.rightReward),behavData.error))
@@ -515,7 +579,7 @@ if __name__ == "__main__":
     import celldatabase
     reload(celldatabase)
 
-    CASE = 1
+    CASE = 3
 
     if CASE == 1:
         import pylab as plt
@@ -537,7 +601,7 @@ if __name__ == "__main__":
         pR.set_markersize(2)
         plt.draw()
         plt.show()
-    if CASE==2:
+    elif CASE==2:
         animalName   = 'saja100'
         ephysSession = '2011-10-26_11-57-31'
         behavSession = '20111026a'
@@ -549,3 +613,7 @@ if __name__ == "__main__":
                                              tetrode = tetrode,
                                              clusters = clusters)
         (behavData,trialEvents,dataTT,spikeInds) = load_mu_reversal(oneSite)
+    elif CASE==3:
+        '''Test loading LFP with behavior '''
+        oneLFP = celldatabase.LFPInfo('saja125','2012-02-02_16-33-29','20120202a',17)
+        (behavData,trialEvents,dataLFP) = load_lfp_reversal(oneLFP)
