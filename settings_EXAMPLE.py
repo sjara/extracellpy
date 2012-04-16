@@ -21,5 +21,6 @@ EXTRACTED_SPIKES_PATH = '/var/data/neuralynx/%s_processed/extractedspikes'
 #       by the animal name
 CELL_LIST_PATH = '/home/sjara/zadorlab/data_analysis/extracellpytest'
 PROCESSED_REVERSAL_PATH = '/tmp/%s_processed/'
-#PROCESSED_REVERSAL_PATH = '/var/data/neuralynx/%s_processed/'
-RASTER_PLOTS_REVERSAL_PATH = '/var/data/neuralynx/%s_rasters/'
+
+###PROCESSED_REVERSAL_PATH = '/var/data/neuralynx/%s_processed/'
+###RASTER_PLOTS_REVERSAL_PATH = '/var/data/neuralynx/%s_rasters/'
