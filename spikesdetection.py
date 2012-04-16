@@ -5,6 +5,7 @@
 '''
 
 from extracellpy import settings
+from extracellpy import loadneuralynx
 import numpy as np
 import os
 
@@ -30,7 +31,10 @@ def find_threshold_crossing(data,threshold=None,refractorySamples=8,dual=False):
     '''dual defines if detection is done for both positive and negative crossings'''
     if not threshold:
         threshold = np.std(data)
-    crossesBool = data>threshold
+    if threshold>0:
+        crossesBool = data>threshold
+    if threshold<0:
+        crossesBool = data<threshold
     if dual:
         crossesBool = crossesBool | (data<-threshold)
     crosses = np.flatnonzero(crossesBool)
@@ -39,6 +43,19 @@ def find_threshold_crossing(data,threshold=None,refractorySamples=8,dual=False):
     params = {'threshold':threshold,'refractorySamples':refractorySamples,
               'dual':dual}
     return crossesCleaned,params
+
+def define_threshold(animalName,ephysSession,electrode,nSamples=100000):
+    import pylab as plt
+    # -- Load continuous data --
+    dataDir = os.path.join(EPHYSPATH,'%s/%s/'%(animalName,ephysSession))
+    contDataFile = os.path.join(dataDir,'CSC%d.ncs'%electrode)
+    dataLFP = loadneuralynx.DataCont(contDataFile)
+    # -- Extract spikes --
+    filtLFP = filter_continuous(dataLFP.samples[:nSamples],dataLFP.samplingRate)
+    plt.clf()
+    plt.plot(filtLFP,'b-')
+    plt.draw()
+    plt.show()
 
 class ExtractedSpikes(object):
     #def __init__(self):
@@ -58,9 +75,9 @@ class ExtractedSpikes(object):
         self.timestamps = dataFile['timestamps'][...]
         dataFile.close()
     def extract_spikes(self,animalName,ephysSession,electrode,
-                       threshold=None,refractorySamples=8,dual=False,showSignal=False):
+                       threshold=None,refractorySamples=8,dual=False,
+                       waveforms=False,showSignal=False):
         import h5py
-        import loadneuralynx
         # -- Load continuous data --
         dataDir = os.path.join(EPHYSPATH,'%s/%s/'%(animalName,ephysSession))
         contDataFile = os.path.join(dataDir,'CSC%d.ncs'%electrode)
@@ -81,6 +98,7 @@ class ExtractedSpikes(object):
         dataFile = h5py.File(spikesFileFull,'w')
         try:
             dataFile.create_dataset('timestamps', data=self.timestamps)
+            # FIXME: save parameters as well
         except:
             dataFile.close() # Close before raising error
             raise

@@ -13,7 +13,8 @@ __version__ = '0.1'
 class CellInfo(object):
     '''Container of information for a given cell. 
     '''
-    def __init__(self, animalName='', ephysSession='',behavSession='', tetrode=-1, cluster=-1):
+    def __init__(self, animalName='', ephysSession='',behavSession='', tetrode=-1, cluster=-1,
+                 trialsToExclude=[]):
         # -- Basic info --
         self.animalName = animalName
         self.ephysSession = ephysSession
@@ -21,6 +22,8 @@ class CellInfo(object):
         #self.sessionID = sessionID
         self.tetrode = tetrode
         self.cluster = cluster
+        # -- Trial selection --
+        self.trialsToExclude = np.array(trialsToExclude,dtype=int)
         # -- Response properties --
         self.soundResponsive = None
     def __repr__(self):

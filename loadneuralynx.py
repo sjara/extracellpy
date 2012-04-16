@@ -31,7 +31,8 @@ class DataCont(cLoadNeuralynx.DataCont):
         ###self.time = self._generate_timevec()
     def _test_integrity(self):
         if np.any(np.diff(np.diff(self.timestamps))):
-            raise TypeError('Not all records are contiguous. Packets lost?')
+            #raise TypeError('Not all records are contiguous. Packets lost?')
+            print('WARNING: Not all records are contiguous. Packets lost?')
     def _generate_timevec(self):
         '''This may be more complicated than necessary: I'm creating an equally
         spaced vector between each record timestamp.

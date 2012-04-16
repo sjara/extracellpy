@@ -49,9 +49,21 @@
     Pyreadline, SetupTools, PyTables, vitables, h5py, Pywin32, py2exe,
     Sphinx, docutools, jinja2, pygments, ReportLab, nose, pylint 
 - Extract extracellpy into c:\Python26\lib\site-packages\
-- Modify extracellpy\sessionanalysis.py to reflect the paths for
-  electrophys and behavior data.
+- Copy extracellpy/cLoadNeuralynx/cLoadNeuralynx_WIN32.pyd to
+  extracellpy/ and rename it to cLoadNeuralynx.pyd
+- Make a copy of settings_EXAMPLE.py and call it settings.py
+- Modify this file (settings.py) to reflect the paths for your data.
 
+
+* MAC INSTALLATION:
+- Download in a directory of choice. We will call it EXTRACELLPY_ROOT
+- echo "export PYTHONPATH=~/src:\$PYTHONPATH" >> ~/.profile
+sudo /usr/bin/easy_install numexpr
+sudo /usr/bin/easy_install cython
+- Install HDF5:
+http://www.hdfgroup.org/HDF5/release/obtain5.html
+
+sudo /usr/bin/easy_install tables
 
 
 * COMPILING MODULE FOR LOADING DATA:

@@ -69,6 +69,8 @@ def twobinotest(Ntrials,Nhits,Nsets=int(1e4)):
     '''Using resampling (is it bootstrapping, jackknifing or permutation test?)
        to find p-value for comparing two binomial distributions.
        Ntrials and Nhits have to be numpy arrays with two elements each.
+
+       See also scipy.stats.fisher_exact()
     '''
     print 'Using %d bootstrap sets. Calculating...'%Nsets,
     sys.stdout.flush()

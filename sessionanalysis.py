@@ -31,6 +31,7 @@ npAND = np.logical_and
 npOR = np.logical_or
 npNOT = np.logical_not
 
+
 def load_behavior_session(animalName,behavSession):
     behavDataDir = os.path.join(BEHAVIORPATH,'%s/'%(animalName))
     behavFileName = 'data_saja_reversal_santiago_%s_%s.h5'%(animalName,behavSession)
@@ -153,6 +154,7 @@ def load_cell_reversal(oneCell,prevCell=None,prevData=None,bitTRIALIND=bitTRIALI
 
     return (behavData,trialEvents,dataTT,spikeInds)
 
+
 def load_cell_reversal_fromcont(oneCell,prevCell=None,prevData=None,bitTRIALIND=bitTRIALIND_DEFAULT):
     '''Load behavior and spikes data. Spikes data in this case comes from detected spikes
     from continuous data.
@@ -191,7 +193,10 @@ def load_cell_reversal_fromcont(oneCell,prevCell=None,prevData=None,bitTRIALIND=
     # -- Load spikes --
     if not prevCell or oneCell.tetrode!=prevCell.tetrode:
         spikesDataDir = EXTRACTED_SPIKES_PATH%animalName
-        spikesFileName = '%s_%s_e%02d_spikes.h5'%(animalName,ephysSession,tetrode)
+        if cluster is None:
+            spikesFileName = '%s_%s_e%02d_spikes.h5'%(animalName,ephysSession,tetrode)
+        else:
+            spikesFileName = '%s_%s_e%02d_c%d_spikes.h5'%(animalName,ephysSession,tetrode,cluster)
         spikesFileFull = os.path.join(spikesDataDir,spikesFileName)
         dataTT = spikesdetection.ExtractedSpikes(spikesFileFull)
         dataTT.timestamps = dataTT.timestamps.astype(np.float64)*1e-6  # in sec
@@ -317,11 +322,11 @@ def load_cell_tuningcurve(oneCell,prevCell=None,prevData=None,bitTRIALIND=bitTRI
     return (behavData,eventsTime,dataTT,spikeInds)
 
 
-def trials_by_condition(behavData,CONDCASE=1,sortby=np.empty(0),outcome='all',selected=[]):
+def trials_by_condition(behavData,CONDCASE=1,sortby=np.empty(0),outcome='all',selected=None):
     ''' 
     (trialsEachCond,condInfo) = trials_by_condition(behavData,1)
     '''
-    if len(selected)<1:
+    if selected is None:
         selected = np.ones(len(behavData.correct),dtype=bool)
     if CONDCASE==1:
         trialsEachCondLabels = ['6.5kHz (L)','14kHz (R)','14kHz (L)','31kHz (R)']
@@ -428,7 +433,7 @@ def trials_by_condition(behavData,CONDCASE=1,sortby=np.empty(0),outcome='all',se
 
 def align_to_event(behavData,CASE):
     if CASE==1:
-        xLabelStr = 'Time from sound onset (ms)'
+        xLabelStr = 'Time from sound onset'
         eventOfInterest = behavData.targetOnsetTime - \
                           behavData.trialStartTime + \
                           behavData.trialStartTimeEphys
@@ -438,23 +443,23 @@ def align_to_event(behavData,CASE):
                           behavData.trialStartTimeEphys[trialsOfInterest]
         '''
     elif CASE==2:
-        xLabelStr = 'Time from center poke out (ms)'
+        xLabelStr = 'Time from center poke out'
         eventOfInterest = behavData.centerOutTime - \
                           behavData.trialStartTime + \
                           behavData.trialStartTimeEphys
     elif CASE==3:
-        xLabelStr = 'Time from reward port in (ms)'
+        xLabelStr = 'Time from reward port in'
         eventOfInterest = behavData.sideInTime - \
                           behavData.trialStartTime + \
                           behavData.trialStartTimeEphys
         '''
     elif CASE==4:
-        xLabelStr = 'UNSORTED Time from side port in (ms)'
+        xLabelStr = 'UNSORTED Time from side port in'
         eventOfInterest = behavData.sideInTime - \
                           behavData.trialStartTime + \
                           behavData.trialStartTimeEphys
     elif CASE==5:
-        xLabelStr = 'UNSORTED Time from center poke out (ms)'
+        xLabelStr = 'UNSORTED Time from center poke out'
         eventOfInterest = behavData.centerOutTime - \
                           behavData.trialStartTime + \
                           behavData.trialStartTimeEphys
@@ -471,10 +476,15 @@ def save_data_each_cell(cellDB,outputDir,timeRange=np.array([-0.3,0.9]),lockTo=1
         cellStr = str(onecell).replace(' ','_')
         (behavData,trialEvents,dataTT,spikeInds) = load_cell_reversal(onecell)
         (eventOfInterest,xLabelStr) = align_to_event(behavData,lockTo)
+        # -- Ignore trialsToExclude --
+        eventOfInterest[onecell.trialsToExclude] = np.nan
+        ##if len(onecell.trialsToExclude)>0:
         (spikeTimesFromEventOnset,trialIndexForEachSpike,indexLimitsEachTrial) = \
             spikesanalysis.eventlocked_spiketimes(dataTT.timestamps[spikeInds],
                                                   eventOfInterest,timeRange)
         filePostfix = allPostfix[lockTo]
+        if not os.path.exists(outputDir):
+            os.makedirs(outputDir)
         fileName = os.path.join(outputDir,cellStr+'_'+filePostfix+'.npz')
         print fileName
         np.savez(fileName, spikeTimesFromEventOnset=spikeTimesFromEventOnset,
@@ -573,6 +583,52 @@ def evaluate_modulation_each_cell(cellDB,responseRange):
 #def findOnset(boolArray):
 #    '''Find indexes where value changes from False to True.'''
 ############ SEE INSTEAD METHOD IN LoadNeuralynx.EVENTS #######
+
+def find_photostim_times(oneCell,bitTRIALIND=bitTRIALIND_DEFAULT):
+    '''
+    Find times between trialStart and photoStim (from ephys data)
+    '''
+    animalName = oneCell.animalName
+    ephysSession = oneCell.ephysSession
+    dataDir = os.path.join(EPHYSPATH,'%s/%s/'%(animalName,ephysSession))
+    eventsFile = os.path.join(dataDir,'Events.nev')
+    events = loadneuralynx.DataEvents(eventsFile)
+    trialEvents = (events.valueTTL & (1<<bitTRIALIND)) != 0
+    trialStartTimeNL = 1e-6*events.timestamps[trialEvents]
+
+    (trialOnset,trialOffset) = events.find_bit_changes(bitTRIALIND)
+    (targetOnset,targetOffset) = events.find_bit_changes(bitTARGETIND)
+    (photoOnset,photoOffset) = events.find_bit_changes(bitPHOTOSTIMIND)
+
+    eventsTime={}
+    eventsTime['trial'] = 1e-6*events.timestamps[trialOnset]
+    eventsTime['target'] = 1e-6*events.timestamps[targetOnset]
+    eventsTime['photostim'] = 1e-6*events.timestamps[photoOnset]
+
+
+    ######### FIX THIS ############
+    # -- Exclude second photostim --
+    print('WARNING: using all photostim events (not correct if trains were presented)')
+    #eventsTime['photostim'] = eventsTime['photostim'][0::2]
+
+    ########## DEBUG ###########
+    #eventsTime['photostim'] = eventsTime['target']
+    
+    # --- Find time of photostim for each trial ---
+    nTrialsEphys = len(eventsTime['trial'])
+    nTarget = len(eventsTime['target'])
+    nPhotoStim = len(eventsTime['photostim'])
+    diffTargetPhoto = np.tile(eventsTime['photostim'],(nTrialsEphys,1)).T - \
+                      np.tile(eventsTime['trial'],(nPhotoStim,1))
+    diffTargetPhoto[diffTargetPhoto<0]=1e6 # Arbitrary large number
+    trialForEachPhoto = np.argmin(diffTargetPhoto,axis=1)
+
+    photoStimOnset = np.empty(nTrialsEphys)
+    photoStimOnset.fill(np.nan)
+    photoStimOnset[trialForEachPhoto] = eventsTime['photostim']-eventsTime['trial'][trialForEachPhoto]
+    # Add empty trial at the beginning (to account for BControl empty trial)
+    photoStimOnset = np.hstack((np.nan,photoStimOnset[:-1]))
+    return photoStimOnset
 
 
 if __name__ == "__main__":
