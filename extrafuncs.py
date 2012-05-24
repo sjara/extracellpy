@@ -73,3 +73,17 @@ def ismember(a1,a2):
     # restore mask to original ordering of a1 and return
     mask = np.array(mask)
     return mask[ind.argsort()]
+
+def moving_average_masked(marray,nsamples):
+    '''
+    Moving average that works with masked array.
+    The calculation is causal so the first elements of the result are the mean
+    over less samples than nsamples.
+    '''
+    result = np.ma.empty(marray.shape,dtype='float')
+    for indi in range(min(len(marray),nsamples)):
+        result[indi] = marray[:indi+1].mean()
+    for indi in range(nsamples,len(marray)):
+        result[indi] = marray[indi-nsamples+1:indi+1].mean()
+    return result
+

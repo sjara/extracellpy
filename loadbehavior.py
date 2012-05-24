@@ -442,9 +442,12 @@ class ReversalBehaviorData(BehaviorData):
             self.indexValidEachBlock[validEachBlock[:,col]] = \
                 indexValidEachBlockMat[validEachBlock[:,col],col]
         '''
-    def plot_summary(self):
+    def plot_summary(self,fontsize=12):
         import behavioranalysis
-        behavioranalysis.plot_summary(self)
+        behavioranalysis.plot_summary(self,fontsize=fontsize)
+    def plot_dynamics(self,winsize=40,fontsize=12):
+        import behavioranalysis
+        behavioranalysis.plot_dynamics(self,winsize=winsize,fontsize=fontsize)
 
 
 class TuningBehaviorData(BehaviorData):

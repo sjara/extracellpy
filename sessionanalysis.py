@@ -103,7 +103,8 @@ def load_lfp_reversal(oneLFP,prevLFP=None,prevData=None,bitTRIALIND=bitTRIALIND_
     return (behavData,trialEvents,dataLFP)
      
 
-def load_cell_reversal(oneCell,prevCell=None,prevData=None,bitTRIALIND=bitTRIALIND_DEFAULT):
+def load_cell_reversal(oneCell,prevCell=None,prevData=None,
+                       bitTRIALIND=bitTRIALIND_DEFAULT,clusterFileSuffix='1'):
     '''Load behavior and spikes data.
     '''
     #ephysSession = '2011-05-10_17-05-22'
@@ -148,7 +149,7 @@ def load_cell_reversal(oneCell,prevCell=None,prevData=None,bitTRIALIND=bitTRIALI
     else:
         dataTT = prevData['dataTT']
     # -- Load clusters --
-    clustersFile = os.path.join(clustersDir,'TT%d.clu.1'%tetrode)
+    clustersFile = os.path.join(clustersDir,'TT%d.clu.%s'%(tetrode,clusterFileSuffix))
     dataTT.set_clusters(clustersFile)
     spikeInds = np.flatnonzero(dataTT.clusters==cluster)
 
@@ -331,7 +332,7 @@ def trials_by_condition(behavData,CONDCASE=1,sortby=np.empty(0),outcome='all',se
     if CONDCASE==1:
         trialsEachCondLabels = ['6.5kHz (L)','14kHz (R)','14kHz (L)','31kHz (R)']
         colorEachCond = [cp.TangoPalette['SkyBlue1'], cp.TangoPalette['Orange2'],
-                         cp.TangoPalette['ScarletRed1'], cp.TangoPalette['Plum1']]
+                         cp.TangoPalette['ScarletRed1'], cp.TangoPalette['Chameleon3']] #'Plum1'
         # FIXME: finish implementing this properly
         if outcome=='correct':
             '''
@@ -361,11 +362,13 @@ def trials_by_condition(behavData,CONDCASE=1,sortby=np.empty(0),outcome='all',se
             g4 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.rightReward),npNOT(behavData.early)))
         elif outcome=='correctness':
             trialsEachCondLabels = ['14kHz (R)','14kHz (L)','14kHz (Rerr)','14kHz (Lerr)']
-            colorEachCond = [cp.TangoPalette['Orange2'], cp.TangoPalette['ScarletRed1'],
-                             cp.TangoPalette['Orange3'], cp.TangoPalette['ScarletRed3']]
+            #colorEachCond = [cp.TangoPalette['Orange1'], cp.TangoPalette['ScarletRed1'],
+            #                 cp.TangoPalette['Orange3'], cp.TangoPalette['ScarletRed3']]
+            colorEachCond = [cp.TangoPalette['Orange1'], 'y',
+                             cp.TangoPalette['ScarletRed1'],'m']
             g1 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.rightReward),behavData.correct))
-            g2 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.leftReward),behavData.correct))
-            g3 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.rightReward),behavData.error))
+            g2 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.rightReward),behavData.error))
+            g3 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.leftReward),behavData.correct))
             g4 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.leftReward),behavData.error))
         elif outcome=='correctPerBlock':
             behavData.find_trials_each_block() # BAD CODING: changing object obscurely
@@ -584,7 +587,7 @@ def evaluate_modulation_each_cell(cellDB,responseRange):
 #    '''Find indexes where value changes from False to True.'''
 ############ SEE INSTEAD METHOD IN LoadNeuralynx.EVENTS #######
 
-def find_photostim_times(oneCell,bitTRIALIND=bitTRIALIND_DEFAULT):
+def find_photostim_times(oneCell,bitTRIALIND=bitTRIALIND_DEFAULT,npulses=1):
     '''
     Find times between trialStart and photoStim (from ephys data)
     '''
@@ -606,9 +609,11 @@ def find_photostim_times(oneCell,bitTRIALIND=bitTRIALIND_DEFAULT):
     eventsTime['photostim'] = 1e-6*events.timestamps[photoOnset]
 
 
-    ######### FIX THIS ############
+    ######### VERIFY THIS ############
+    if npulses>1:
+        eventsTime['photostim'] = eventsTime['photostim'][0::npulses]
     # -- Exclude second photostim --
-    print('WARNING: using all photostim events (not correct if trains were presented)')
+    #print('WARNING: using all photostim events (not correct if trains were presented)')
     #eventsTime['photostim'] = eventsTime['photostim'][0::2]
 
     ########## DEBUG ###########

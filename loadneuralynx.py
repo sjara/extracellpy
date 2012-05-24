@@ -123,10 +123,25 @@ class DataTetrode(cLoadNeuralynx.DataTetrode):
     Reading the data is implemented by the parent class from cLoadNeuralynx.'''
     def __init__(self,fileName,readWaves=False):
         cLoadNeuralynx.DataTetrode.__init__(self,fileName,readWaves)
-    def set_clusters(self,clusterFile):
+        self.params = {}
+        self. _parse_header()
+        if readWaves:
+            N_CHANNELS = self.params['NumADChannels']
+            SAMPLES_PER_SPIKE = self.params['WaveformLength']
+            self.samples = self.samples.reshape((N_CHANNELS,SAMPLES_PER_SPIKE,-1),order='F')
+    def set_clusters(self,clusterFileOrArray):
         '''Access to KlustaKwik CLU files containing cluster data.'''
-        self.clusters = np.fromfile(clusterFile,dtype='int32',sep=' ')[1:]
-
+        if isinstance(clusterFileOrArray,str):
+            self.clusters = np.fromfile(clusterFileOrArray,dtype='int32',sep=' ')[1:]
+        else:
+            self.clusters = np.array(clusterFileOrArray)
+    def _parse_header(self):
+        patt = re.compile(r'-NumADChannels (\d+)')
+        self.params['NumADChannels'] = int(patt.search(self.header).groups()[0])
+        patt = re.compile(r'-WaveformLength (\d+)')
+        self.params['WaveformLength'] = int(patt.search(self.header).groups()[0])
+        patt = re.compile(r'-SamplingFrequency (\d+\.\d+)')
+        self.params['SamplingFrequency'] = float(patt.search(self.header).groups()[0])
 
 class DataEvents(object):
     '''Access to Neuralynx NEV files containing events data

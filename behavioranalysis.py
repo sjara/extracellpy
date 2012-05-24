@@ -6,12 +6,15 @@ Tools for analyzing behavioral data.
 '''
 
 import settings
+import extrafuncs
+import extraplots
 from pylab import *
 import numpy as np
 import datetime
 import sys, os
 import cPickle as pickle
 import gzip
+import matplotlib.pyplot as plt
 
 __author__ = 'Santiago Jaramillo'
 __version__ = '0.1'
@@ -367,12 +370,48 @@ def serialize(arrayOfStructs,fieldToSerialize):
         serializedArray[ind]=oneStruct.__getattribute__(fieldToSerialize)
     return serializedArray
 
+def plot_dynamics(behavData,winsize=40,fontsize=12):
+    ax = plt.gca()
+    ax.cla()
+    lineWidth = 2
+    possibleFreq = np.unique(behavData['TargetFreq'])
+    possibleColors = ['b','r','g','k','m','c']
+    colorEachFreq = dict(zip(possibleFreq,possibleColors))
 
-def plot_summary(behavData):
+    behavData.find_trials_each_block()
+
+    nBlocks = len(behavData.eachBlockID)
+    trialsEachBlock = behavData.trialsEachBlock
+    nValidEachBlock = sum(behavData.trialsEachBlock & (~behavData.early[:,np.newaxis]),axis=0)
+    lastValidEachBlock = cumsum(nValidEachBlock)
+    firstValidEachBlock = np.concatenate(([0],lastValidEachBlock[:-1]))
+
+    for indb in range(nBlocks):
+        trialsThisBlock = trialsEachBlock[:,indb]
+        freqsThisBlock = np.unique(behavData['TargetFreq'][trialsThisBlock])
+        validThisBlock = trialsThisBlock & (~behavData.early)
+        for indf,thisFreq in enumerate(freqsThisBlock):
+            thisColor = colorEachFreq[thisFreq]
+            trialsThisFreq = (behavData['TargetFreq']==thisFreq)
+            choiceVecThisFreq = np.ma.masked_array(behavData.rightChoice[validThisBlock])
+            choiceVecThisFreq.mask = ~trialsThisFreq[validThisBlock]
+            movAvChoice = extrafuncs.moving_average_masked(choiceVecThisFreq,winsize)
+            plt.plot(range(firstValidEachBlock[indb],lastValidEachBlock[indb]),100*movAvChoice,
+                 lw=lineWidth,color=thisColor)
+            plt.hold(True)
+    plt.ylim([-5,105])
+    plt.axhline(50,color='0.5',ls='--')
+    plt.ylabel('% rightward',fontsize=fontsize)
+    plt.xlabel('Trial',fontsize=fontsize)
+    extraplots.set_ticks_fontsize(ax,fontsize)
+    plt.draw()
+    plt.show()
+
+
+def plot_summary(behavData,fontsize=12):
     '''Show summary of performance.
     Input is an object created by loadbehavior.ReversalBehaviorData()
     '''
-    import matplotlib.pyplot as plt
     behavData.extract_event_times()    # In case it hasn't
     behavData.find_trials_each_type()  # In case it hasn't
 
@@ -415,15 +454,16 @@ def plot_summary(behavData):
     hbars = plt.bar(xPos,100*perfEachCond,align='center',fc=[0.8,0.8,0.8],ec='k')
     #htrials(indtype) = text(BarXpos(indtype),10,num2str(NtrialsEachCond(indc)));
     for thispos,thistext in zip(xPos,nValidEachCond):
-        plt.text(thispos,10,str(thistext),ha='center')
-    ax.set_ylabel('% correct',fontsize=12);
+        plt.text(thispos,10,str(thistext),ha='center',fontsize=fontsize)
+    ax.set_ylabel('% correct',fontsize=fontsize)
     ax.set_xticks(xPos)
     ax.set_xticklabels(freqLabels)
 
     titleStr = '%s [%s] %s\n'%(behavData['Subject'],behavData['Date'],behavData['HostName'])
     titleStr += '%d valid, %d%% early'%(sum(nValidEachCond),round(percentEarly))
-    ax.set_title(titleStr,fontweight='bold')
-
+    ax.set_title(titleStr,fontweight='bold',fontsize=fontsize)
+    extraplots.set_ticks_fontsize(ax,fontsize)
+    
     #plt.gcf().set_size_inches(4,5)
 
     plt.draw()

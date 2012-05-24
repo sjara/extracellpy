@@ -7,6 +7,7 @@ Santiago Jaramillo - 2012-03-08
 from extracellpy import settings
 from extracellpy import loadneuralynx, spikesanalysis, loadbehavior
 from extracellpy import extraplots
+from extracellpy import extrafuncs
 import os, sys
 import numpy as np
 from pylab import *
@@ -81,8 +82,16 @@ while True:
     dataTT = loadneuralynx.DataTetrode(tetrodeFile)
     dataTT.timestamps = dataTT.timestamps.astype(np.float64)*1e-6  # in sec
 
-    (spikeTimesFromEventOnset,trialIndexForEachSpike,indexLimitsEachTrial) = \
-        spikesanalysis.eventlocked_spiketimes(dataTT.timestamps,eventOfInterest,timeRange)
+    # -- Load clusters if required --
+    if (clustersEachTetrode is not None) & clustersEachTetrode.has_key(tetrode):
+        clustersFile = os.path.join(clustersDir,'TT%d.clu.1'%tetrode)
+        dataTT.set_clusters(clustersFile)
+        spikeInds = extrafuncs.ismember(dataTT.clusters,clustersEachTetrode[tetrode])
+        (spikeTimesFromEventOnset,trialIndexForEachSpike,indexLimitsEachTrial) = \
+          spikesanalysis.eventlocked_spiketimes(dataTT.timestamps[spikeInds],eventOfInterest,timeRange)
+    else:
+        (spikeTimesFromEventOnset,trialIndexForEachSpike,indexLimitsEachTrial) = \
+          spikesanalysis.eventlocked_spiketimes(dataTT.timestamps,eventOfInterest,timeRange)
 
     clf()
     gcf().set_facecolor('w')

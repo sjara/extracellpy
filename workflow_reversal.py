@@ -25,30 +25,42 @@ __version__ = '0.1'
 
 RASTER_MARKERSIZE = 2
 
-def behavior_summary(animalName,sessionList,trialslim=[]):
+def behavior_summary(animalsNames,sessionList,trialslim=[]):
     '''
+    animalsNames: an array of animals to analyze (it can also be a string for a single animal)
+    sessionList: an array of sessions to analyze (it can also be a string for a single session)
     trialslim: array to set xlim() of dynamics' plot
     '''
     #dateRange
+    if isinstance(animalsNames,str):
+        animalsNames = [animalsNames]
+    if isinstance(sessionList,str):
+        sessionList = [sessionList]
     nSessions = len(sessionList)
-    gs = gridspec.GridSpec(nSessions, 3)
+    nAnimals = len(animalsNames)
+    gs = gridspec.GridSpec(nSessions*nAnimals, 3)
     gs.update(hspace=0.5,wspace=0.4)
     plt.clf()
     for inds,thisSession in enumerate(sessionList):
-        try:
-            behavData = sessionanalysis.load_behavior_session(animalName,thisSession)
-        except:
-            print thisSession+' does not exist'
-            continue
-        print 'Loaded %s %s'%(animalName,thisSession)
-        plt.subplot(gs[3*inds])
-        behavData.plot_summary(fontsize=10)
-        plt.subplot(gs[3*inds+1:3*inds+3])
-        behavData.plot_dynamics(winsize=40,fontsize=10)
-        if trialslim:
-            plt.xlim(trialslim)
-        plt.draw()
-        plt.show()
+        for inda,animalName in enumerate(animalsNames):
+            try:
+                behavData = sessionanalysis.load_behavior_session(animalName,thisSession)
+            except:
+                print thisSession+' does not exist'
+                continue
+            print 'Loaded %s %s'%(animalName,thisSession)
+            #plt.subplot(gs[3*inds])
+            thisAnimalPos = 3*inda*nSessions
+            thisPlotPos = thisAnimalPos+3*inds
+            plt.subplot(gs[thisPlotPos])
+            behavData.plot_summary(fontsize=10)
+            #plt.subplot(gs[3*inda+1:3*inda+3])
+            plt.subplot(gs[thisPlotPos+1:thisPlotPos+3])
+            behavData.plot_dynamics(winsize=40,fontsize=10)
+            if trialslim:
+                plt.xlim(trialslim)
+            plt.draw()
+            plt.show()
     
 def save_freqtuning_plots(animalName,copytogether=True):
     # -- Load list of cells --
@@ -350,7 +362,7 @@ def plot_zscores_response(animalName,lockedTo='SoundOn'):
     for indcell,onecell in enumerate(allcells.cellDB):
         #for ind in range(nCells):
         cellStr = str(onecell).replace(' ','_')
-        fileName = os.path.join(dataDir,'zscore_'+cellStr+'_'+lockedTo+'.npz')
+        fileName = os.path.join(dataDir,'zscore_resp_'+cellStr+'_'+lockedTo+'.npz')
         zScoreData = np.load(fileName)
         zStats = zScoreData['zStats']
         rangeStart = zScoreData['rangeStart']
@@ -368,9 +380,14 @@ def plot_zscores_response(animalName,lockedTo='SoundOn'):
         plt.setp((h1,h2),linestyle=':',color='0.5')
         plt.hold(False)
 
+        maxVal = np.max(abs(zStats))
+        yLims = plt.ylim(max(5,1.1*maxVal)*np.array([-1,1]))
+        print maxVal
+        
         plt.xlabel('Time from XXX (ms)')
         plt.ylabel('z-score')
-
+        plt.title(str(onecell))
+        
         plt.draw()
         plt.show()
         plt.waitforbuttonpress()

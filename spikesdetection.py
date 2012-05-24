@@ -44,14 +44,14 @@ def find_threshold_crossing(data,threshold=None,refractorySamples=8,dual=False):
               'dual':dual}
     return crossesCleaned,params
 
-def define_threshold(animalName,ephysSession,electrode,nSamples=100000):
+def define_threshold(animalName,ephysSession,electrode,samples=np.arange(100000)):
     import pylab as plt
     # -- Load continuous data --
     dataDir = os.path.join(EPHYSPATH,'%s/%s/'%(animalName,ephysSession))
     contDataFile = os.path.join(dataDir,'CSC%d.ncs'%electrode)
     dataLFP = loadneuralynx.DataCont(contDataFile)
     # -- Extract spikes --
-    filtLFP = filter_continuous(dataLFP.samples[:nSamples],dataLFP.samplingRate)
+    filtLFP = filter_continuous(dataLFP.samples[samples],dataLFP.samplingRate)
     plt.clf()
     plt.plot(filtLFP,'b-')
     plt.draw()

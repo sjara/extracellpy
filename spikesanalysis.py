@@ -68,7 +68,7 @@ def OLD_eventlocked_spiketimes(TimeStamps,EventOnsetTimes,TimeRange):
     return (SpikeTimesFromEventOnset,TrialIndexForEachSpike)
 
 
-def eventlocked_spiketimes(timeStamps,eventOnsetTimes,timeRange):
+def eventlocked_spiketimes(timeStamps,eventOnsetTimes,timeRange,spikeindex=False):
     '''Create a vector with the spike timestamps w.r.t. event onset.
 
     (spikeTimesFromEventOnset,trialIndexForEachSpike,indexLimitsEachTrial) = 
@@ -89,10 +89,11 @@ def eventlocked_spiketimes(timeStamps,eventOnsetTimes,timeRange):
     # FIXME: check if timestamps are sorted
     
     SpikeTimesFromEventOnset = np.empty(0,dtype='float64')
+    spikeIndices = np.empty(0,dtype='int')
     TrialIndexForEachSpike = np.empty(0,dtype='int')
     IndexLimitsEachTrial = np.empty((2,nTrials),dtype='int')
     accumIndexFirstSpike = 0
-
+    
     for indtrial in np.arange(nTrials):
         ThisTrialRange = eventOnsetTimes[indtrial] + timeRange
         FirstSpikeInTrial = np.searchsorted(timeStamps,ThisTrialRange[0])
@@ -102,9 +103,11 @@ def eventlocked_spiketimes(timeStamps,eventOnsetTimes,timeRange):
         #SpikesThisTrial = np.arange(FirstSpikeInTrial,LastSpikeInTrial+1)
 
         LastSpikeInTrialPlusOne = np.searchsorted(timeStamps,ThisTrialRange[-1])
-        SpikesThisTrial = slice(FirstSpikeInTrial,LastSpikeInTrialPlusOne)
+        #SpikesThisTrial = slice(FirstSpikeInTrial,LastSpikeInTrialPlusOne) # FIXME: Faster?
+        SpikesThisTrial = np.arange(FirstSpikeInTrial,LastSpikeInTrialPlusOne)
         NSpikesThisTrial = LastSpikeInTrialPlusOne - FirstSpikeInTrial
 
+        spikeIndices = np.concatenate((spikeIndices,SpikesThisTrial))
         SpikeTimesFromEventOnset = np.concatenate((SpikeTimesFromEventOnset,
                                         timeStamps[SpikesThisTrial]-eventOnsetTimes[indtrial]))
         TrialIndexForEachSpike = np.concatenate((TrialIndexForEachSpike,
@@ -113,7 +116,10 @@ def eventlocked_spiketimes(timeStamps,eventOnsetTimes,timeRange):
         IndexLimitsEachTrial[:,indtrial] = [accumIndexFirstSpike,accumIndexFirstSpike+NSpikesThisTrial]
         accumIndexFirstSpike += NSpikesThisTrial
         #1/0 ### DEBUG
-    return (SpikeTimesFromEventOnset,TrialIndexForEachSpike,IndexLimitsEachTrial)
+    if spikeindex:
+        return (SpikeTimesFromEventOnset,TrialIndexForEachSpike,IndexLimitsEachTrial,spikeIndices)
+    else:
+        return (SpikeTimesFromEventOnset,TrialIndexForEachSpike,IndexLimitsEachTrial)
 
 
 def calculate_psth_quant(spikeRasterMat,timeVec,windowSize,TimeOffset=0):
@@ -292,6 +298,9 @@ def evaluate_modulation(spikeTimesFromEventOnset,indexLimitsEachTrial,responseRa
        indexLimitsEachTrial
        responseRange
        trialsEachCond: list of two arrays of indexes
+
+       Returns:
+       (meanSpikes,pValue)
     '''
     from scipy import stats
     nspkResp = []
@@ -314,6 +323,7 @@ def load_mclust_t(fileName):
     nRec = len(packedRecords)/4 # Because they are uint32
     timeStamps = unpack('>'+'L'*nRec,packedRecords)
     return 1e-4*np.array(timeStamps)
+
 
 '''
 # THE PROBLEM WITH THIS IS THE DEPENDENCY ON load_mu_reversal()

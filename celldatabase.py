@@ -95,6 +95,8 @@ class CellDatabase(list):
         super(CellDatabase, self).__init__()
     #def extend(self,extraCellDB):  ### NOT NECESSARY
     #    list.extend(self,extraCellDB)
+    #def __getslice__(self,i,j):
+    #    return CellDatabase(list.__getslice__(self, i, j))
     def findcell(self,firstParam,behavSession='',tetrode=-1,cluster=-1):
         '''Find index of cell. It can be used in two ways:
         cellDB.findcell('saja099','20110528a',1,11)
