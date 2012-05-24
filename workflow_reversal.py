@@ -12,6 +12,7 @@ reload(spikesanalysis)
 from extracellpy import extraplots
 from extracellpy import frequencytuning
 reload(frequencytuning)
+from extracellpy import celldatabase
 import os
 import sys
 import shutil
@@ -375,8 +376,24 @@ def plot_zscores_response(animalName,lockedTo='SoundOn'):
         plt.waitforbuttonpress()
 
 
-def evaluate_responsiveness(animalName):
+def load_cells_database(animalsNames):
     '''
+    Load and append cell definitions from multiple animals.
+    '''
+    # -- Load list of cells --
+    sys.path.append(settings.CELL_LIST_PATH)
+    cellDB = celldatabase.CellDatabase()
+    for animalName in animalsNames:
+        dataModule = 'allcells_%s'%(animalName)
+        allcells = __import__(dataModule)
+        reload(allcells)
+        cellDB.extend(allcells.cellDB)
+    return cellDB
+    
+
+def OLD_save_summary_responsiveness(animalName):
+    '''
+    THIS WORKS ONLY FOR ONE ANIMALS AT THE TIME
     Evaluate which cells show a response to each of the stimuli (given z-scores).
     Results are saved in sajaXXX_processed/zscores_response_SoundOn/zscoresAll_sajaXXX...
     '''
@@ -433,6 +450,69 @@ def evaluate_responsiveness(animalName):
              responsiveLowFreq=responsiveLowFreq,responsiveMidFreq=responsiveMidFreq,
              responsiveHighFreq=responsiveHighFreq)
 
+def save_summary_responsiveness(animalsNames):
+    '''
+    Evaluate which cells show a response to each of the stimuli (given z-scores).
+    Results are saved in settings.PROCESSED_REVERSAL_PATH
+      where %s is replaced by 'all'.
+    '''
+    zThreshold = 3
+    rangeToEvaluate = [0,0.2] # sec from event onset
+    lockedTo = 'SoundOn'
+    
+    cellDB = load_cells_database(animalsNames)
+
+    # -- Load first cell to get dimensions of data --
+    onecell = cellDB[0]
+    cellStr = str(onecell).replace(' ','_')
+    dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+    dataDir = os.path.join(dataPath,'zscores_response_%s'%lockedTo)
+    zScoreData = np.load(os.path.join(dataDir,'zscore_resp_'+cellStr+'_'+lockedTo+'.npz'))
+    nCells = len(cellDB)
+    nCond = zScoreData['zStats'].shape[1]
+    nBins = len(zScoreData['rangeStart'])
+    zStatsEachCell = np.empty((nBins,nCond,nCells))
+    strEachCell = []
+
+    print 'Loading all zscores... ',
+    for indcell,onecell in enumerate(cellDB):
+        dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+        dataDir = os.path.join(dataPath,'zscores_response_%s'%lockedTo)
+        cellStr = str(onecell).replace(' ','_')
+        fileName = os.path.join(dataDir,'zscore_resp_'+cellStr+'_'+lockedTo+'.npz')
+        zScoreData = np.load(fileName)
+        zStatsEachCell[:,:,indcell] = zScoreData['zStats']
+        strEachCell.append(cellStr)
+    print 'done!'
+    rangeStart = zScoreData['rangeStart']
+    colorEachCond = zScoreData['colorEachCond']
+
+    rangesOfInterest = (rangeStart>=rangeToEvaluate[0])&(rangeStart<rangeToEvaluate[-1])
+
+    responsiveLowFreq = (np.sum(zStatsEachCell[rangesOfInterest,0,:]>zThreshold,axis=0)>0) | \
+                        (np.sum(zStatsEachCell[rangesOfInterest,0,:]<-zThreshold,axis=0)>0)
+    responsiveMidFreq = (np.sum(zStatsEachCell[rangesOfInterest,1,:]>zThreshold,axis=0)>0) | \
+                        (np.sum(zStatsEachCell[rangesOfInterest,1,:]<-zThreshold,axis=0)>0) | \
+                        (np.sum(zStatsEachCell[rangesOfInterest,2,:]>zThreshold,axis=0)>0) | \
+                        (np.sum(zStatsEachCell[rangesOfInterest,2,:]<-zThreshold,axis=0)>0)
+    responsiveHighFreq = (np.sum(zStatsEachCell[rangesOfInterest,3,:]>zThreshold,axis=0)>0) | \
+                         (np.sum(zStatsEachCell[rangesOfInterest,3,:]<-zThreshold,axis=0)>0)
+
+
+    strAllAnimals = '-'.join(animalsNames)
+    outputDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+    outputFileName = os.path.join(outputDir,'summary_resp_%s_%s.npz'%(strAllAnimals,lockedTo))
+    print 'Saving summary to %s'%outputFileName
+    np.savez(outputFileName,zStatsEachCell=zStatsEachCell,zThreshold=zThreshold,
+             rangesOfInterest=rangesOfInterest,strEachCell=strEachCell,
+             rangeStart=zScoreData['rangeStart'],baseRange=zScoreData['baseRange'],
+             trialsEachCondLabels=zScoreData['trialsEachCondLabels'],
+             responsiveLowFreq=responsiveLowFreq,responsiveMidFreq=responsiveMidFreq,
+             responsiveHighFreq=responsiveHighFreq)
+
 def print_summary_responsiveness(animalName):
     '''
     Print summary of responses.
@@ -457,7 +537,7 @@ def print_summary_responsiveness(animalName):
     reload(allcells)
     '''
 
-def save_zcores_modulation(animalName,lockedTo='SoundOn'):
+def save_zscores_modulation(animalName,lockedTo='SoundOn'):
     '''
     Calculate z-scores between midFreq-Right and midFreq-Left
     Data directories are defined in .../extracellpy/settings.py
@@ -627,25 +707,21 @@ def OLD_save_summary_modulation(animalName,lockedTo='SoundOn'):
              meanRespEachCond=meanRespEachCond,
              pValueMod=pValueMod, consistentMod=consistentMod)
 
-def OLD_save_summary_modulation(animalName,lockedTo='SoundOn'):
+def save_summary_modulation(animalsNames,lockedTo='SoundOn'):
     '''
     Create array with z-scores from all cells.
     Data directories are defined in .../extracellpy/settings.py
+    Results are saved in settings.PROCESSED_REVERSAL_PATH
+      where %s is replaced by 'all'.
 
     Parameters
     ----------
-    animalName: string. Name of animal.For example 'saja000'
+    animalsNames: string. Name of animal.For example 'saja000'
     lockedTo  : string. Currently only 'SoundOn' is supported.
     '''
- 
-    # -- Load list of cells --
-    sys.path.append(settings.CELL_LIST_PATH)
-    dataModule = 'allcells_%s'%(animalName)
-    allcells = __import__(dataModule)
-    reload(allcells)
-    dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
-    dataDir = os.path.join(dataPath,'zscores_modulation_%s'%lockedTo)
 
+    cellDB = load_cells_database(animalsNames)
+    
     # Because it is per block, I don't know how many yet
     meanRespEachSwitch = np.empty((0,2)) # in spk/sec
     pValueEachSwitch =  np.empty(0)
@@ -653,13 +729,15 @@ def OLD_save_summary_modulation(animalName,lockedTo='SoundOn'):
     typeEachSwitch = np.empty(0,dtype=int)
     strEachCell = []
 
-    nCells = len(allcells.cellDB)
+    nCells = len(cellDB)
     meanRespEachCond = np.empty((nCells,2),dtype=float)
     pValueMod = np.empty(nCells,dtype=float)
     consistentMod =  np.zeros(nCells,dtype=bool)
     
     print 'Loading all modulation zscores... '
-    for indcell,onecell in enumerate(allcells.cellDB):
+    for indcell,onecell in enumerate(cellDB):
+        dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+        dataDir = os.path.join(dataPath,'zscores_modulation_%s'%lockedTo)
         cellStr = str(onecell).replace(' ','_')
         fileName = os.path.join(dataDir,'zscore_mod_'+cellStr+'_'+lockedTo+'.npz')
         zScoreData = np.load(fileName)
@@ -679,7 +757,12 @@ def OLD_save_summary_modulation(animalName,lockedTo='SoundOn'):
         if (sumModDir==0) | (sumModDir==nSwitchesThisCell):
             consistentMod[indcell]=True
 
-    outputFileName = os.path.join(dataDir,'zscore_mod_All_%s_%s.npz'%(animalName,lockedTo))
+    strAllAnimals = '-'.join(animalsNames)
+    outputDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+    outputFileName = os.path.join(outputDir,'summary_mod_%s_%s.npz'%(strAllAnimals,lockedTo))
     print 'Saving summary to %s'%outputFileName
     np.savez(outputFileName,strEachCell=strEachCell,meanRespEachSwitch=meanRespEachSwitch,
              pValueEachSwitch=pValueEachSwitch,typeEachSwitch=typeEachSwitch,
@@ -688,7 +771,7 @@ def OLD_save_summary_modulation(animalName,lockedTo='SoundOn'):
              eachCondLabel=zScoreData['eachCondLabel'],
              meanRespEachCond=meanRespEachCond,
              pValueMod=pValueMod, consistentMod=consistentMod)
-
+    
 def print_summary_modulation(animalName):
     '''
     Print summary of modulation.
@@ -749,6 +832,8 @@ def load_summary_modulation_one_animal(animalName):
 
 def merge_summary_modulation(animalsName):
     '''
+    OBSOLETE (NOT NEEDED ANYMORE): summary of responses and modulation should
+                        be calculated for many animals at once. See save_summary_...
     Load summary information.
     '''
     fieldsToMerge = ['typeEachSwitch', 'consistentMod', 'pValueMod',
@@ -781,28 +866,72 @@ def merge_summary_modulation(animalsName):
     for field in fieldsToKeep:
         allData[field] = mdata[field]
     return allData
-    
-    
-def show_raster_figures(animalName,lockedTo,cellIndexList):
+
+def load_summary_modulation(animalsNames,lockedTo='SoundOn'):
+    ''' 
+    Load summary of modulation, responses and list of cells.
     '''
-    Show raster figured (previously saved as PNG) for each cell in order
-    specified by cellIndexList.
+    cellDB = load_cells_database(animalsNames)
+    strAllAnimals = '-'.join(animalsNames)
+    dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    respFileName = os.path.join(dataDir,'summary_resp_%s_%s.npz'%(strAllAnimals,lockedTo))
+    modFileName = os.path.join(dataDir,'summary_mod_%s_%s.npz'%(strAllAnimals,lockedTo))
+    respData = np.load(respFileName)
+    modData = np.load(modFileName)
+    return (modData,respData,cellDB)
+
+def plot_summary_modulation_TEMP(animalsNames,lockedTo='SoundOn'):
+    '''
+    TEMP FUNCTION:
+    This version is too restrictive. It is here just for illustration.
+    '''
+    from scipy import stats
+    (mdata,rdata,cellDB) = load_summary_modulation(animalsNames,lockedTo=lockedTo)
+    respConsistSignif = (mdata['pValueMod']<0.05) & mdata['consistentMod'] & rdata['responsiveMidFreq']
+
+    dataToPlot = mdata['meanRespEachCond'][rdata['responsiveMidFreq']]
+    pValToPlot = mdata['pValueMod'][rdata['responsiveMidFreq']]
+    pValToPlot[~mdata['consistentMod'][rdata['responsiveMidFreq']]] = 1
+
+    # --- Plot results ---
+    from extracellpy import extraplots
+    plt.clf()
+    plt.setp(plt.gcf(),facecolor='w')
+    nBins = 32 #14
+    plt.subplot(1,2,1)
+    extraplots.plot_index_histogram(dataToPlot[:,0],
+                                    dataToPlot[:,1],
+                                    pValue=pValToPlot,nBins=nBins)
+    plt.subplot(1,2,2)
+    extraplots.plot_scatter(dataToPlot[:,0],
+                            dataToPlot[:,1],
+                            pValue=pValToPlot)
+
+    (tstatw,pval) = stats.wilcoxon(dataToPlot[:,0],dataToPlot[:,1]) # paired test
+    print 'p-value = %0.4f'%pval
+
+    
+#def show_raster_figures(animalName,lockedTo,cellIndexList):
+def show_raster_figures(cellDB,lockedTo='SoundOn'):
+    '''
+    Show raster figured (previously saved as PNG) for each cell in cellDB
 
     Use for example:
     cellIndexList = np.argsort(pValueMod)
+    show_raster_figures(cellDB[cellIndexList])
     '''
     # -- Load list of cells --
     sys.path.append(settings.CELL_LIST_PATH)
-    dataModule = 'allcells_%s'%(animalName)
-    allcells = __import__(dataModule)
-    reload(allcells)
-
-    dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
-    figDir = os.path.join(dataPath,'rasters_lockedTo%s_4cond'%lockedTo)
     figFilenameFormat = 'raster_%s_%s_T%dc%d.png'
 
-    for indcell in cellIndexList:
-        onecell = allcells.cellDB[indcell]
+    #for indcell in cellIndexList:
+    for onecell in cellDB:
+        dataModule = 'allcells_%s'%(onecell.animalName)
+        allcells = __import__(dataModule)
+        reload(allcells)
+
+        dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+        figDir = os.path.join(dataPath,'rasters_lockedTo%s_4cond'%lockedTo)
         figFilename = figFilenameFormat%(onecell.animalName,onecell.ephysSession,
                                          onecell.tetrode,onecell.cluster)
         img=mpimg.imread(os.path.join(figDir,figFilename))
