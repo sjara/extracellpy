@@ -25,7 +25,7 @@ __version__ = '0.1'
 
 RASTER_MARKERSIZE = 2
 
-def behavior_summary(animalsNames,sessionList,trialslim=[]):
+def behavior_summary(animalsNames,sessionList,trialslim=[],outputDir=''):
     '''
     animalsNames: an array of animals to analyze (it can also be a string for a single animal)
     sessionList: an array of sessions to analyze (it can also be a string for a single session)
@@ -61,6 +61,16 @@ def behavior_summary(animalsNames,sessionList,trialslim=[]):
                 plt.xlim(trialslim)
             plt.draw()
             plt.show()
+    if len(outputDir):
+        animalStr = '-'.join(animalsNames)
+        sessionStr = '-'.join(sessionList)
+        plt.gcf().set_size_inches((8.5,11))
+        figformat = 'png' #'png' #'pdf' #'svg'
+        filename = 'behavior_%s_%s.%s'%(animalStr,sessionStr,figformat)
+        fullFileName = os.path.join(outputDir,filename)
+        print 'saving figure to %s'%fullFileName
+        plt.gcf().savefig(fullFileName,format=figformat)
+        
     
 def save_freqtuning_plots(animalName,copytogether=True):
     # -- Load list of cells --
@@ -328,13 +338,18 @@ def save_zscores_response(animalName,lockedTo='SoundOn'):
 
         # -- Load behavior --
         if ephysData['behavSession']==prevSession:
-            print 'Behavior already loaded (%s)'%cellStr,
+            print 'Behavior already loaded (%s)'%cellStr
         else:
             print 'Loading %s [%s] - %s'%(ephysData['animalName'],ephysData['behavSession'],cellStr)
             behavData = sessionanalysis.load_behavior_session(ephysData['animalName'],
                                                               ephysData['behavSession'])
             prevSession = ephysData['behavSession']
-            (trialsEachCond,condInfo) = sessionanalysis.trials_by_condition(behavData,1,outcome='correct')
+            
+        selectedTrials = np.ones(behavData['nTrials'],dtype=bool)
+        selectedTrials[onecell.trialsToExclude] = False
+        (trialsEachCond,condInfo) = sessionanalysis.trials_by_condition(behavData,1,
+                                                                        outcome='correct',
+                                                                        selected=selectedTrials)
         nCond = len(trialsEachCond)
         zStats = np.empty((len(rangeStart),nCond))
         for indCond in range(nCond):
@@ -562,11 +577,15 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
     Parameters
     ----------
     animalName: string. Name of animal.For example 'saja000'
-    lockedTo  : string. Currently only 'SoundOn' is supported.
+    lockedTo  : string. Tested for 'SoundOn' and 'Cout'.
     '''
     
     MIN_TRIALS_PER_BLOCK = 75
-    responseRange = [0.010,0.150]
+    if lockedTo=='SoundOn':
+        responseRange = [0.010,0.150]
+    elif lockedTo=='Cout':
+        responseRange = [0.000,0.250] # w.r.t Cout
+        responseRange = [0.150,0.400] # w.r.t SoundOn
 
     # -- Load list of cells --
     sys.path.append(settings.CELL_LIST_PATH)
@@ -606,6 +625,7 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
         # -- Find modulation for all blocks merged --
         eachCondLabel = ['LowBoundBlock','HighBoundBlock']
         validMidFreq = trialsMidFreq & ~behavData.early
+        validMidFreq[onecell.trialsToExclude] = False
         validEachCond = np.c_[behavData.lowFreqs,behavData.highFreqs]
         validMidFreqEachCond = validEachCond & validMidFreq[:,np.newaxis]
         trialsToCompare = validMidFreqEachCond
@@ -624,7 +644,9 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
         #########################################################
 
         behavData.find_trials_each_block()
-        validTrialsEachBlock = behavData.trialsEachBlock & ~behavData.early[:,np.newaxis]
+        validTrials = ~behavData.early
+        validTrials[onecell.trialsToExclude] = False
+        validTrialsEachBlock = behavData.trialsEachBlock & validTrials[:,np.newaxis]
         nBlocks = validTrialsEachBlock.shape[1]
         nTrialsEachBlock = validTrialsEachBlock.sum(axis=0)
 
@@ -734,7 +756,7 @@ def save_summary_modulation(animalsNames,lockedTo='SoundOn'):
     Parameters
     ----------
     animalsNames: string. Name of animal.For example 'saja000'
-    lockedTo  : string. Currently only 'SoundOn' is supported.
+    lockedTo  : string. Tested for 'SoundOn' and 'Cout'.
     '''
 
     cellDB = load_cells_database(animalsNames)
@@ -887,11 +909,15 @@ def merge_summary_modulation(animalsName):
 def load_summary_modulation(animalsNames,lockedTo='SoundOn'):
     ''' 
     Load summary of modulation, responses and list of cells.
+
+    NOTE: response data is always with respect to SoundOn, but modulation
+          data can be w.r.t SoundOn or Cout
     '''
+    lockedToResp = 'SoundOn'
     cellDB = load_cells_database(animalsNames)
     strAllAnimals = '-'.join(animalsNames)
     dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
-    respFileName = os.path.join(dataDir,'summary_resp_%s_%s.npz'%(strAllAnimals,lockedTo))
+    respFileName = os.path.join(dataDir,'summary_resp_%s_%s.npz'%(strAllAnimals,lockedToResp))
     modFileName = os.path.join(dataDir,'summary_mod_%s_%s.npz'%(strAllAnimals,lockedTo))
     respData = np.load(respFileName)
     modData = np.load(modFileName)
@@ -904,11 +930,15 @@ def plot_summary_modulation_TEMP(animalsNames,lockedTo='SoundOn'):
     '''
     from scipy import stats
     (mdata,rdata,cellDB) = load_summary_modulation(animalsNames,lockedTo=lockedTo)
-    respConsistSignif = (mdata['pValueMod']<0.05) & mdata['consistentMod'] & rdata['responsiveMidFreq']
-
-    dataToPlot = mdata['meanRespEachCond'][rdata['responsiveMidFreq']]
-    pValToPlot = mdata['pValueMod'][rdata['responsiveMidFreq']]
-    pValToPlot[~mdata['consistentMod'][rdata['responsiveMidFreq']]] = 1
+    if lockedTo=='SoundOn':
+        #respConsistSignif = (mdata['pValueMod']<0.05) & mdata['consistentMod'] & rdata['responsiveMidFreq']
+        dataToPlot = mdata['meanRespEachCond'][rdata['responsiveMidFreq']]
+        pValToPlot = mdata['pValueMod'][rdata['responsiveMidFreq']]
+        pValToPlot[~mdata['consistentMod'][rdata['responsiveMidFreq']]] = 1
+    elif lockedTo=='Cout':
+        dataToPlot = mdata['meanRespEachCond']
+        pValToPlot = mdata['pValueMod']
+        pValToPlot[~mdata['consistentMod']] = 1
 
     # --- Plot results ---
     from extracellpy import extraplots
@@ -942,10 +972,10 @@ def show_raster_figures(cellDB,lockedTo='SoundOn'):
     figFilenameFormat = 'raster_%s_%s_T%dc%d.png'
 
     #for indcell in cellIndexList:
-    for onecell in cellDB:
-        dataModule = 'allcells_%s'%(onecell.animalName)
-        allcells = __import__(dataModule)
-        reload(allcells)
+    for indcell,onecell in enumerate(cellDB):
+        #dataModule = 'allcells_%s'%(onecell.animalName)
+        #allcells = __import__(dataModule)
+        #reload(allcells)
 
         dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
         figDir = os.path.join(dataPath,'rasters_lockedTo%s_4cond'%lockedTo)
@@ -953,7 +983,8 @@ def show_raster_figures(cellDB,lockedTo='SoundOn'):
                                          onecell.tetrode,onecell.cluster)
         img=mpimg.imread(os.path.join(figDir,figFilename))
         plt.imshow(img,aspect='equal',interpolation='bilinear')
-        #print pValueMod[indcell]
+        #print pValueMod[indcell]'
+        plt.title('%d/%d'%(indcell,len(cellDB)))
         plt.axis('off')
         plt.draw()
         plt.show()
