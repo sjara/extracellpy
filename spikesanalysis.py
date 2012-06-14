@@ -6,6 +6,7 @@
 
 #from pylab import *
 import numpy as np
+import os
 
 __author__ = 'Santiago Jaramillo'
 __version__ = '0.2'
@@ -297,7 +298,7 @@ def evaluate_modulation(spikeTimesFromEventOnset,indexLimitsEachTrial,responseRa
        spikeTimesFromEventOnset
        indexLimitsEachTrial
        responseRange
-       trialsEachCond: list of two arrays of indexes
+       trialsEachCond: list of two arrays of indexes (either bool or int)
 
        Returns:
        (meanSpikes,pValue)
@@ -311,6 +312,54 @@ def evaluate_modulation(spikeTimesFromEventOnset,indexLimitsEachTrial,responseRa
     meanSpikes = np.array([np.mean(n) for n in nspkResp])
     [zStat,pValue] = stats.ranksums(nspkResp[0],nspkResp[1])
     return (meanSpikes,pValue)
+
+
+def estimate_spike_shape(onecell):
+    '''
+    Estimate average waveform of spike and some measurements.
+    '''
+    import settings
+    import loadneuralynx
+    
+    animalName = onecell.animalName
+    ephysSession = onecell.ephysSession
+    behavSession = onecell.behavSession
+    tetrode = onecell.tetrode
+    cluster = onecell.cluster
+    cellStr = str(onecell).replace(' ','_')
+
+    dataDir = os.path.join(settings.EPHYS_PATH,'%s/%s/'%(animalName,ephysSession))
+    clustersDir = os.path.join(settings.EPHYS_PATH,'%s/%s_kk/'%(animalName,ephysSession))
+
+    tetrodeFile = os.path.join(dataDir,'TT%d.ntt'%tetrode)
+    #if not prevCell or onecell.tetrode!=prevCell.tetrode:
+    dataTT = loadneuralynx.DataTetrode(tetrodeFile,readWaves=True)
+    newShape = (dataTT.params['NumADChannels'],dataTT.params['WaveformLength'],-1)
+    dataTT.samples = dataTT.samples.reshape(newShape,order='F')
+    # -- Load clusters --
+    clusterFileSuffix = '1'
+    clustersFile = os.path.join(clustersDir,'TT%d.clu.%s'%(tetrode,clusterFileSuffix))
+    dataTT.set_clusters(clustersFile)
+    spikeInds = np.flatnonzero(dataTT.clusters==cluster)
+
+    nWavesToAverage = min(len(spikeInds),2000)
+    peakSample = np.argmax(dataTT.samples[:,:,:nWavesToAverage],axis=1)
+    commonPeakSample = np.bincount(peakSample.flatten()).argmax()
+    avWaveforms = np.mean(dataTT.samples[:,:,:nWavesToAverage],axis=2)
+    maxChannel = np.argmax(avWaveforms[:,commonPeakSample])
+    selectedWaveforms = peakSample[maxChannel,:]==commonPeakSample
+    waveform = np.mean(dataTT.samples[maxChannel,:,np.flatnonzero(selectedWaveforms)],axis=0)
+    # NOTE: indexing seems to change the order or things, so we need to take the mean across axis=0.
+    spikeMeasures = {}
+    spikeMeasures['peakSample'] = np.argmax(waveform)
+    spikeMeasures['valleySample'] = np.argmin(waveform)
+    spikeMeasures['spikeWidth'] = spikeMeasures['valleySample']-spikeMeasures['peakSample']
+    spikeMeasures['maxValue'] = np.max(waveform)
+    spikeMeasures['minValue'] = np.min(waveform)
+    #plot(waveform)
+    return (waveform,spikeMeasures)
+
+
 
 
 def load_mclust_t(fileName):

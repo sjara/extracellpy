@@ -74,7 +74,7 @@ def ismember(a1,a2):
     mask = np.array(mask)
     return mask[ind.argsort()]
 
-def moving_average_masked(marray,nsamples):
+def moving_average_masked_OLD(marray,nsamples):
     '''
     Moving average that works with masked array.
     The calculation is causal so the first elements of the result are the mean
@@ -85,5 +85,26 @@ def moving_average_masked(marray,nsamples):
         result[indi] = marray[:indi+1].mean()
     for indi in range(nsamples,len(marray)):
         result[indi] = marray[indi-nsamples+1:indi+1].mean()
+    return result
+
+
+def moving_average_masked(myarray,winsize):
+    '''
+    Moving average that works with masked arrays (of multiple rows).
+    marray is R x n
+    For each point, the average is taken over all elements in columns inside a moving window.
+    The calculation is causal so the first elements of the result are the mean
+    over less samples than nsamples.
+    '''
+    if len(myarray.shape)==1:
+        marray=myarray[np.newaxis,:]
+    else:
+        marray = myarray
+    (nRepeats, nSamples) = marray.shape
+    result = np.ma.empty(nSamples,dtype='float')
+    for indi in range(min(nSamples,winsize)):
+        result[indi] = marray[:,:indi+1].mean()
+    for indi in range(winsize,nSamples):
+        result[indi] = marray[:,indi-winsize+1:indi+1].mean()
     return result
 

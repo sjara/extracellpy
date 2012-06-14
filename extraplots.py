@@ -224,6 +224,10 @@ THE FOLLOWING CODE NEEDS trialIndexForEachSpike AS PARAMETER.
 
 
 def plot_index_histogram(val1,val2,pValue,nBins=14,fontSize=12):
+    '''
+    returns (allbars,signifbars)
+    where allbars is (y,x,patches)
+    '''
     MI = (val1-val2)/(val1+val2)
     MIsignif = MI[pValue<0.05]
     if np.any(np.isnan(MI)):
@@ -231,9 +235,9 @@ def plot_index_histogram(val1,val2,pValue,nBins=14,fontSize=12):
 
     ax = mpl.gca()#mpl.axes([0.2,0.2,0.6,0.6])
     histRange = [-1,1]
-    mpl.hist(MI,bins=nBins,range=histRange,color='0.75')
+    allbars = mpl.hist(MI,bins=nBins,range=histRange,color='0.75')
     mpl.hold(True)
-    mpl.hist(MIsignif,bins=nBins,range=histRange,color='0')
+    signifbars = mpl.hist(MIsignif,bins=nBins,range=histRange,color='0')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     xtlines = ax.get_xticklines()
@@ -241,7 +245,7 @@ def plot_index_histogram(val1,val2,pValue,nBins=14,fontSize=12):
     for t in xtlines[1::2]+ytlines[1::2]:
         t.set_visible(False)
     yLims = mpl.ylim()
-    mpl.plot([0,0],[0,yLims[1]],color='k',linestyle=':')
+    mpl.plot([0,0],[0,yLims[1]],color='k',linestyle=':',zorder=-1)
     mpl.hold(False)
     mpl.xlabel('Index: (x1-x2)/(x1+x2)',fontsize=fontSize)
     mpl.ylabel('Number of cells',fontsize=fontSize)
@@ -250,6 +254,7 @@ def plot_index_histogram(val1,val2,pValue,nBins=14,fontSize=12):
     ax.set_yticks(range(0,yLims[1]+1,10))
     mpl.draw()
     mpl.show()
+    return(allbars,signifbars)
 
 def plot_scatter(val1,val2,pValue,fontSize=12):
     hp = mpl.plot(val1,val2,'o',mfc='none',mec='0.5')
@@ -267,6 +272,43 @@ def plot_scatter(val1,val2,pValue,fontSize=12):
     mpl.draw()
     mpl.show()
 
+def plot_scatter_groups(data,pValue,color='None',axlims=None,fontSize=12):
+    '''
+    data: list of M arrays of dimension Nx2
+    pValue: list of M arrays of pvalues
+    color: list of M colors
+    '''
+    mpl.cla()
+    nGroups = len(data)
+    allValues = np.concatenate(data)
+    nValues = allValues.shape[0]
+    nSignif = 0
+    if color is None:
+        color=nGroups*['k']
+    for indg in range(nGroups):
+        val1 = data[indg][:,0]
+        val2 = data[indg][:,1]
+        hp = mpl.plot(val1,val2,'o',mfc='none',mec=color[indg])
+        signifPoints = pValue[indg]<0.05
+        nSignif += sum(signifPoints)
+        mpl.hold(True)
+        hp = mpl.plot(val1[signifPoints],val2[signifPoints],'o',mfc=color[indg],mec=color[indg])
+    if axlims is None:
+        maxRate = np.nanmax(allValues)
+        minRate = np.nanmin(allValues)
+    else:
+        maxRate = axlims[1]
+        minRate = axlims[0]
+    hline = mpl.plot([minRate,maxRate],[minRate,maxRate],'0.0',linestyle='--')
+    mpl.hold(False)
+    mpl.axis([minRate,maxRate,minRate,maxRate])
+    #mpl.axis('equal')
+    mpl.xlabel('x1')
+    mpl.ylabel('x2')
+    #mpl.title('N=%d (%0.0f%% p<0.05)'%(len(pValue),100*float(sum(signifPoints))/len(pValue)))
+    mpl.title('N=%d (%0.0f%% p<0.05)'%(nValues,100*float(nSignif)/nValues))
+    mpl.draw()
+    mpl.show()
 
 
 if __name__ == "__main__":

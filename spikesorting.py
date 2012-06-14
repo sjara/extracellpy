@@ -115,6 +115,9 @@ def plot_projections(waveforms,npoints=200):
     
    
 class ClusterReportFromData(object):
+    '''
+    Need to finish reports when more than nrows<clusters.
+    '''
     def __init__(self,dataTT,outputDir=None,showfig=True,nrows=12):
         self.dataTT = dataTT
         self.nSpikes = 0
@@ -125,7 +128,8 @@ class ClusterReportFromData(object):
         self.fig = plt.gcf()
         self.nRows = nrows
         self.set_parameters() # From dataTT
-
+        self.nPages = 0
+        
         self.plot_report(showfig)
         if outputDir is not None:
             self.save_report(outputDir)
@@ -134,6 +138,7 @@ class ClusterReportFromData(object):
         self.clustersList = np.unique(self.dataTT.clusters)
         self.nClusters = len(self.clustersList)
         self.find_spikes_each_cluster()
+        self.nPages = self.nClusters//(self.nRows+1)+1
     def __str__(self):
         return '%d clusters'%(self.nClusters)
     def find_spikes_each_cluster(self):

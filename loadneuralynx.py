@@ -142,6 +142,10 @@ class DataTetrode(cLoadNeuralynx.DataTetrode):
         self.params['WaveformLength'] = int(patt.search(self.header).groups()[0])
         patt = re.compile(r'-SamplingFrequency (\d+\.\d+)')
         self.params['SamplingFrequency'] = float(patt.search(self.header).groups()[0])
+        patt = re.compile(r'-AmpLowCut (\d+\.*\d+)')
+        self.params['AmpLowCut'] = float(patt.search(self.header).groups()[0])
+        patt = re.compile(r'-AmpHiCut (\d\.*\d+)')
+        self.params['AmpHiCut'] = float(patt.search(self.header).groups()[0])
 
 class DataEvents(object):
     '''Access to Neuralynx NEV files containing events data
@@ -245,6 +249,8 @@ def read_header(dataFile):
     header = f.read(HEADERSIZE)
     f.close()
     return header
+
+
 
 '''
 def read_clu():

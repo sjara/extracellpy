@@ -106,6 +106,7 @@ def load_lfp_reversal(oneLFP,prevLFP=None,prevData=None,bitTRIALIND=bitTRIALIND_
 def load_cell_reversal(oneCell,prevCell=None,prevData=None,
                        bitTRIALIND=bitTRIALIND_DEFAULT,clusterFileSuffix='1'):
     '''Load behavior and spikes data.
+       returns (behavData,trialEvents,dataTT,spikeInds)
     '''
     #ephysSession = '2011-05-10_17-05-22'
     #behavSession = '20110510a'
@@ -330,56 +331,59 @@ def trials_by_condition(behavData,CONDCASE=1,sortby=np.empty(0),outcome='all',se
     if selected is None:
         selected = np.ones(len(behavData.correct),dtype=bool)
     if CONDCASE==1:
-        trialsEachCondLabels = ['6.5kHz (L)','14kHz (R)','14kHz (L)','31kHz (R)']
+        trialsEachCondLabels = {'LowFreq:LeftReward':0, 'MidFreq:RightReward':1,
+                                'MidFreq:LeftReward':2, 'HighFreq:RightReward':3}
         colorEachCond = [cp.TangoPalette['SkyBlue1'], cp.TangoPalette['Orange2'],
                          cp.TangoPalette['ScarletRed1'], cp.TangoPalette['Chameleon3']] #'Plum1'
         # FIXME: finish implementing this properly
         if outcome=='correct':
-            '''
-            g1 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.leftReward),behavData.correct))
-            g2 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.rightReward),behavData.correct))
-            g3 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.leftReward),behavData.correct))
-            g4 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.rightReward),behavData.correct))
-            '''
             g1 = np.flatnonzero(behavData.lowFreqs & behavData.leftReward & behavData.correct & selected)
             g2 = np.flatnonzero(behavData.lowFreqs & behavData.rightReward & behavData.correct & selected)
             g3 = np.flatnonzero(behavData.highFreqs & behavData.leftReward & behavData.correct & selected)
             g4 = np.flatnonzero(behavData.highFreqs & behavData.rightReward & behavData.correct & selected)
         elif outcome=='error':
+            print 'WARNING! this needs fixing. It does not exclude bad trials'
             g1 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.leftReward),behavData.error))
             g2 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.rightReward),behavData.error))
             g3 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.leftReward),behavData.error))
             g4 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.rightReward),behavData.error))
         elif outcome=='early':
+            print 'WARNING! this needs fixing. It does not exclude bad trials'
             g1 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.leftReward),behavData.early))
             g2 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.rightReward),behavData.early))
             g3 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.leftReward),behavData.early))
             g4 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.rightReward),behavData.early))
         elif outcome=='valid':
+            print 'WARNING! this needs fixing. It does not exclude bad trials'
             g1 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.leftReward),npNOT(behavData.early)))
             g2 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.rightReward),npNOT(behavData.early)))
             g3 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.leftReward),npNOT(behavData.early)))
             g4 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.rightReward),npNOT(behavData.early)))
         elif outcome=='correctness':
-            trialsEachCondLabels = ['14kHz (R)','14kHz (L)','14kHz (Rerr)','14kHz (Lerr)']
+            trialsEachCondLabels = {'MidFreq:RightReward':0, 'MidFreq:LeftReward':1,
+                                    'MidFreq:RightRewardError':2, 'MidFreq:LeftRewardError':3}
             #colorEachCond = [cp.TangoPalette['Orange1'], cp.TangoPalette['ScarletRed1'],
             #                 cp.TangoPalette['Orange3'], cp.TangoPalette['ScarletRed3']]
             colorEachCond = [cp.TangoPalette['Orange1'], 'y',
                              cp.TangoPalette['ScarletRed1'],'m']
-            g1 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.rightReward),behavData.correct))
-            g2 = np.flatnonzero(npAND(npAND(behavData.lowFreqs,behavData.rightReward),behavData.error))
-            g3 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.leftReward),behavData.correct))
-            g4 = np.flatnonzero(npAND(npAND(behavData.highFreqs,behavData.leftReward),behavData.error))
+            g1 = np.flatnonzero(behavData.lowFreqs & behavData.rightReward & behavData.correct & selected)
+            g2 = np.flatnonzero(behavData.lowFreqs & behavData.rightReward & behavData.error & selected)
+            g3 = np.flatnonzero(behavData.highFreqs & behavData.leftReward & behavData.correct & selected)
+            g4 = np.flatnonzero(behavData.highFreqs & behavData.leftReward & behavData.error & selected)
         elif outcome=='correctPerBlock':
             behavData.find_trials_each_block() # BAD CODING: changing object obscurely
+            g1part = behavData.lowFreqs & behavData.leftReward & behavData.correct & selected
+            g2part = behavData.lowFreqs & behavData.rightReward & behavData.correct & selected
+            g3part = behavData.highFreqs & behavData.leftReward & behavData.correct & selected
+            g4part = behavData.highFreqs & behavData.rightReward & behavData.correct & selected
             if np.mean(behavData.lowFreqs[:10])>np.mean(behavData.highFreqs[:10]):
                 trialsEachCondLabels = ['14kHz (R)','14kHz (L)','14kHz (R)','14kHz (L)']
                 colorEachCond = [cp.TangoPalette['Orange2'], cp.TangoPalette['ScarletRed1'],
                                  cp.TangoPalette['Orange2'], cp.TangoPalette['ScarletRed1']]
-                g1part = npAND(npAND(behavData.lowFreqs,behavData.leftReward),behavData.correct)
-                g2part = npAND(npAND(behavData.lowFreqs,behavData.rightReward),behavData.correct)
-                g3part = npAND(npAND(behavData.highFreqs,behavData.leftReward),behavData.correct)
-                g4part = npAND(npAND(behavData.highFreqs,behavData.rightReward),behavData.correct)
+                #g1part = npAND(npAND(behavData.lowFreqs,behavData.leftReward),behavData.correct)
+                #g2part = npAND(npAND(behavData.lowFreqs,behavData.rightReward),behavData.correct)
+                #g3part = npAND(npAND(behavData.highFreqs,behavData.leftReward),behavData.correct)
+                #g4part = npAND(npAND(behavData.highFreqs,behavData.rightReward),behavData.correct)
                 g1 = np.flatnonzero(npAND(g2part,behavData.trialsEachBlock[:,1]))
                 g3 = np.flatnonzero(npAND(g2part,behavData.trialsEachBlock[:,3]))
                 g2 = np.flatnonzero(npAND(g3part,behavData.trialsEachBlock[:,2]))
@@ -388,10 +392,10 @@ def trials_by_condition(behavData,CONDCASE=1,sortby=np.empty(0),outcome='all',se
                 trialsEachCondLabels = ['14kHz (L)','14kHz (R)','14kHz (L)','14kHz (R)']
                 colorEachCond = [cp.TangoPalette['ScarletRed1'], cp.TangoPalette['Orange2'],
                                  cp.TangoPalette['ScarletRed1'], cp.TangoPalette['Orange2']]
-                g1part = npAND(npAND(behavData.lowFreqs,behavData.leftReward),npNOT(behavData.early))
-                g2part = npAND(npAND(behavData.lowFreqs,behavData.rightReward),npNOT(behavData.early))
-                g3part = npAND(npAND(behavData.highFreqs,behavData.leftReward),npNOT(behavData.early))
-                g4part = npAND(npAND(behavData.highFreqs,behavData.rightReward),npNOT(behavData.early))
+                #g1part = npAND(npAND(behavData.lowFreqs,behavData.leftReward),npNOT(behavData.early))
+                #g2part = npAND(npAND(behavData.lowFreqs,behavData.rightReward),npNOT(behavData.early))
+                #g3part = npAND(npAND(behavData.highFreqs,behavData.leftReward),npNOT(behavData.early))
+                #g4part = npAND(npAND(behavData.highFreqs,behavData.rightReward),npNOT(behavData.early))
                 g1 = np.flatnonzero(npAND(g3part,behavData.trialsEachBlock[:,1]))
                 g3 = np.flatnonzero(npAND(g3part,behavData.trialsEachBlock[:,3]))
                 g2 = np.flatnonzero(npAND(g2part,behavData.trialsEachBlock[:,2]))

@@ -118,8 +118,67 @@ def save_freqtuning_plots(animalName,copytogether=True):
         else:
             print '... figure saved.'
         
+def save_spike_shape(animalName):
+    # -- Load list of cells --
+    sys.path.append(settings.CELL_LIST_PATH)
+    dataModule = 'allcells_%s'%(animalName)
+    allcells = __import__(dataModule)
+    reload(allcells)
+    outputPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
+    outputDir = os.path.join(outputPath,'spikeshapes')
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+    for indcell,onecell in enumerate(allcells.cellDB):
+        cellStr = str(onecell).replace(' ','_')
+        print 'Estimating spike shape of %s'%cellStr
+        (waveform,measures) = spikesanalysis.estimate_spike_shape(onecell)
+        outputFileName = os.path.join(outputDir,'spikeshape_'+cellStr+'.npz')
+        np.savez(outputFileName,waveform=waveform,measures=measures)
 
+        
+def save_summary_spike_shape(animalsNames):
+    cellDB = load_cells_database(animalsNames)
+    nCells = len(cellDB)
+    # -- Load first cell to get dimensions of data --
+    onecell = cellDB[0]
+    dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+    dataDir = os.path.join(dataPath,'spikeshapes')
+    cellStr = str(onecell).replace(' ','_')
+    dataFileName = os.path.join(dataDir,'spikeshape_'+cellStr+'.npz')
+    spikeshapeData = np.load(dataFileName)
+    waveforms = np.zeros((nCells,len(spikeshapeData['waveform'])))
+    spikeWidth = np.zeros(nCells)
+    maxValue = np.zeros(nCells)
+
+    for indcell,onecell in enumerate(cellDB):
+        dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+        dataDir = os.path.join(dataPath,'spikeshapes')
+        cellStr = str(onecell).replace(' ','_')
+        print(cellStr)
+        dataFileName = os.path.join(dataDir,'spikeshape_'+cellStr+'.npz')
+        spikeshapeData = np.load(dataFileName)
+        spikeWidth[indcell] = spikeshapeData['measures'].item()['spikeWidth']
+        maxValue[indcell] = spikeshapeData['measures'].item()['maxValue']
+        waveforms[indcell,:] = spikeshapeData['waveform']/maxValue[indcell]
+    strAllAnimals = '-'.join(animalsNames)
+    outputDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+    outputFileName = os.path.join(outputDir,'summary_spikeshape_%s.npz'%strAllAnimals)
+    print 'Saving summary to %s'%outputFileName
+    np.savez(outputFileName,waveforms=waveforms,spikeWidth=spikeWidth,maxValue=maxValue)
+
+def load_summary_spike_shape(animalsNames):
+    cellDB = load_cells_database(animalsNames)
+    strAllAnimals = '-'.join(animalsNames)
+    dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    spkFileName = os.path.join(dataDir,'summary_spikeshape_%s.npz'%strAllAnimals)
+    spikeshapeData = np.load(spkFileName)
+    return (spikeshapeData,cellDB)
     
+        
 def save_raster_data(animalName,lockedTo=None):
     '''
     Save spike times aligned to a task event.
@@ -234,7 +293,7 @@ def plot_raster_reversal(onecell,ephysData,behavData,lockedTo,groupedBy):
         (trialsEachCond,condInfo) = sessionanalysis.trials_by_condition(behavData,1,
                                                                         outcome='correct',
                                                                         selected=selectedTrials)
-    elif 0:
+    elif groupedBy=='perBlock':
         (trialsEachCond,condInfo) = sessionanalysis.trials_by_condition(behavData,1,
                                                                         outcome='correctPerBlock',
                                                                         selected=selectedTrials)
@@ -291,11 +350,12 @@ def plot_raster_reversal(onecell,ephysData,behavData,lockedTo,groupedBy):
     #plt.clf()
     #plt.axes([0.12,0.15,0.8,0.7])
     ax2 = plt.axes([boxAx.xmin,0.1,boxAx.width,0.35],sharex=ax1)
-    extraplots.plot_psth(PSTH,smoothWinSize,binsStartTime,colorEachCond=colorEachCond,linewidth=2)
+    pPSTH = extraplots.plot_psth(PSTH,smoothWinSize,binsStartTime,colorEachCond=colorEachCond,linewidth=2)
     plt.xlim(1e3*timeRange+[0.05,-0.05])
     plt.xlabel('%s (ms)'%xLabelStr)
     plt.ylabel('Firing rate (spk/s)')
 
+    return (pRaster,hcond,pPSTH)
     #break
 
 
@@ -350,6 +410,12 @@ def save_zscores_response(animalName,lockedTo='SoundOn'):
         (trialsEachCond,condInfo) = sessionanalysis.trials_by_condition(behavData,1,
                                                                         outcome='correct',
                                                                         selected=selectedTrials)
+        # -- Add one condition with all trials with midFreq --
+        trialsMidFreqRightRew = trialsEachCond[condInfo['trialsEachCondLabels']['MidFreq:RightReward']]
+        trialsMidFreqLeftRew = trialsEachCond[condInfo['trialsEachCondLabels']['MidFreq:LeftReward']]
+        trialsEachCond.append(np.concatenate((trialsMidFreqRightRew,trialsMidFreqLeftRew)))
+        condInfo['trialsEachCondLabels']['MidFreq:Combined']=len(trialsEachCond)-1
+        
         nCond = len(trialsEachCond)
         zStats = np.empty((len(rangeStart),nCond))
         for indCond in range(nCond):
@@ -423,72 +489,12 @@ def load_cells_database(animalsNames):
     return cellDB
     
 
-def OLD_save_summary_responsiveness(animalName):
-    '''
-    THIS WORKS ONLY FOR ONE ANIMALS AT THE TIME
-    Evaluate which cells show a response to each of the stimuli (given z-scores).
-    Results are saved in sajaXXX_processed/zscores_response_SoundOn/zscoresAll_sajaXXX...
-    '''
-    zThreshold = 3
-    rangeToEvaluate = [0,0.2] # sec from event onset
-    lockedTo = 'SoundOn'
-    
-    # -- Load list of cells --
-    sys.path.append(settings.CELL_LIST_PATH)
-    dataModule = 'allcells_%s'%(animalName)
-    allcells = __import__(dataModule)
-    reload(allcells)
-    dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
-    dataDir = os.path.join(dataPath,'zscores_response_%s'%lockedTo)
-    outputFileName = os.path.join(dataDir,'zscore_resp_All_%s_%s.npz'%(animalName,lockedTo))
-
-    # -- Load first cell to get dimensions of data --
-    cellStr = str(allcells.cellDB[0]).replace(' ','_')
-    zScoreData = np.load(os.path.join(dataDir,'zscore_'+cellStr+'_'+lockedTo+'.npz'))
-    nCells = len(allcells.cellDB)
-    nCond = zScoreData['zStats'].shape[1]
-    nBins = len(zScoreData['rangeStart'])
-    zStatsEachCell = np.empty((nBins,nCond,nCells))
-    strEachCell = []
-
-    print 'Loading all zscores... ',
-    for indcell,onecell in enumerate(allcells.cellDB):
-        #for ind in range(nCells):
-        cellStr = str(onecell).replace(' ','_')
-        fileName = os.path.join(dataDir,'zscore_'+cellStr+'_'+lockedTo+'.npz')
-        zScoreData = np.load(fileName)
-        zStatsEachCell[:,:,indcell] = zScoreData['zStats']
-        strEachCell.append(cellStr)
-    print 'done!'
-    rangeStart = zScoreData['rangeStart']
-    colorEachCond = zScoreData['colorEachCond']
-
-    rangesOfInterest = (rangeStart>=rangeToEvaluate[0])&(rangeStart<rangeToEvaluate[-1])
-
-    responsiveLowFreq = (np.sum(zStatsEachCell[rangesOfInterest,0,:]>zThreshold,axis=0)>0) | \
-                        (np.sum(zStatsEachCell[rangesOfInterest,0,:]<-zThreshold,axis=0)>0)
-    responsiveMidFreq = (np.sum(zStatsEachCell[rangesOfInterest,1,:]>zThreshold,axis=0)>0) | \
-                        (np.sum(zStatsEachCell[rangesOfInterest,1,:]<-zThreshold,axis=0)>0) | \
-                        (np.sum(zStatsEachCell[rangesOfInterest,2,:]>zThreshold,axis=0)>0) | \
-                        (np.sum(zStatsEachCell[rangesOfInterest,2,:]<-zThreshold,axis=0)>0)
-    responsiveHighFreq = (np.sum(zStatsEachCell[rangesOfInterest,3,:]>zThreshold,axis=0)>0) | \
-                         (np.sum(zStatsEachCell[rangesOfInterest,3,:]<-zThreshold,axis=0)>0)
-
-    print 'Saving summary to %s'%outputFileName
-    np.savez(outputFileName,zStatsEachCell=zStatsEachCell,zThreshold=zThreshold,
-             rangesOfInterest=rangesOfInterest,strEachCell=strEachCell,
-             rangeStart=zScoreData['rangeStart'],baseRange=zScoreData['baseRange'],
-             trialsEachCondLabels=zScoreData['trialsEachCondLabels'],
-             responsiveLowFreq=responsiveLowFreq,responsiveMidFreq=responsiveMidFreq,
-             responsiveHighFreq=responsiveHighFreq)
-
-def save_summary_responsiveness(animalsNames):
+def save_summary_responsiveness(animalsNames,zThreshold=3):
     '''
     Evaluate which cells show a response to each of the stimuli (given z-scores).
     Results are saved in settings.PROCESSED_REVERSAL_PATH
       where %s is replaced by 'all'.
     '''
-    zThreshold = 3
     rangeToEvaluate = [0,0.2] # sec from event onset
     lockedTo = 'SoundOn'
     
@@ -529,7 +535,8 @@ def save_summary_responsiveness(animalsNames):
                         (np.sum(zStatsEachCell[rangesOfInterest,2,:]<-zThreshold,axis=0)>0)
     responsiveHighFreq = (np.sum(zStatsEachCell[rangesOfInterest,3,:]>zThreshold,axis=0)>0) | \
                          (np.sum(zStatsEachCell[rangesOfInterest,3,:]<-zThreshold,axis=0)>0)
-
+    responsiveMidFreqCombined = (np.sum(zStatsEachCell[rangesOfInterest,4,:]>zThreshold,axis=0)>0) | \
+                                (np.sum(zStatsEachCell[rangesOfInterest,4,:]<-zThreshold,axis=0)>0)
 
     strAllAnimals = '-'.join(animalsNames)
     outputDir = settings.PROCESSED_REVERSAL_PATH%('all')
@@ -543,7 +550,7 @@ def save_summary_responsiveness(animalsNames):
              rangeStart=zScoreData['rangeStart'],baseRange=zScoreData['baseRange'],
              trialsEachCondLabels=zScoreData['trialsEachCondLabels'],
              responsiveLowFreq=responsiveLowFreq,responsiveMidFreq=responsiveMidFreq,
-             responsiveHighFreq=responsiveHighFreq)
+             responsiveHighFreq=responsiveHighFreq,responsiveMidFreqCombined=responsiveMidFreqCombined)
 
 def print_summary_responsiveness(animalName):
     '''
@@ -578,6 +585,13 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
     ----------
     animalName: string. Name of animal.For example 'saja000'
     lockedTo  : string. Tested for 'SoundOn' and 'Cout'.
+
+
+    TO DO:
+    - Compare all trials (correct and incorrect) by choice
+    - compare correct vs incorrect for a given association.
+    - Save baseline info
+
     '''
     
     MIN_TRIALS_PER_BLOCK = 75
@@ -603,8 +617,6 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
     typeEachSwitchLabels = {'LowBoundToHighBound':0,'HighBoundToLowBound':1}
     respDuration = np.diff(responseRange)
 
-    indSwitch = 0
-
     prevSession = ''
     for indcell,onecell in enumerate(allcells.cellDB):
         cellStr = str(onecell).replace(' ','_')
@@ -620,11 +632,13 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
                                                               ephysData['behavSession'])
 
             trialsMidFreq = (behavData['TargetFreq']==behavData['FreqMid'][-1])
+            trialsMidFreqCorrect = trialsMidFreq & (behavData['HitHistory']>0)
             prevSession = ephysData['behavSession']
 
         # -- Find modulation for all blocks merged --
         eachCondLabel = ['LowBoundBlock','HighBoundBlock']
-        validMidFreq = trialsMidFreq & ~behavData.early
+        #validMidFreq = trialsMidFreq & ~behavData.early
+        validMidFreq = trialsMidFreqCorrect & ~behavData.early ### Only correct trials
         validMidFreq[onecell.trialsToExclude] = False
         validEachCond = np.c_[behavData.lowFreqs,behavData.highFreqs]
         validMidFreqEachCond = validEachCond & validMidFreq[:,np.newaxis]
@@ -633,10 +647,14 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
                                                                           ephysData['indexLimitsEachTrial'],
                                                                           responseRange,list(trialsToCompare.T))
 
+        #########################################################
+        # WARNING!!! meanRespEachCond is in units of spks but meanRespEachSwitch in spks/sec
+        #########################################################
+
         # Because it is per block, I don't know how many yet
         meanRespEachSwitch = np.empty((0,2)) # in spk/sec  array with [lowBound,highBound]
         pValueEachSwitch =  np.empty(0)
-        cellIDeachSwitch =  np.empty(0,dtype=int)
+        ### cellIDeachSwitch =  np.empty(0,dtype=int)  ### NOT NEEDED
         typeEachSwitch = np.empty(0,dtype=int)
 
         #########################################################
@@ -655,10 +673,12 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
                 if (indb+1)<nBlocks and nTrialsEachBlock[indb+1]>=MIN_TRIALS_PER_BLOCK:
                     if(behavData.lowFreqs[behavData.firstTrialEachBlock[indb]]):
                         thisType = typeEachSwitchLabels['LowBoundToHighBound']
-                        trialsToCompare = validTrialsEachBlock[:,[indb,indb+1]] & trialsMidFreq[:,np.newaxis]
+                        #trialsToCompare = validTrialsEachBlock[:,[indb,indb+1]] & trialsMidFreq[:,np.newaxis]
+                        trialsToCompare = validTrialsEachBlock[:,[indb,indb+1]] & trialsMidFreqCorrect[:,np.newaxis]
                     elif (behavData.highFreqs[behavData.firstTrialEachBlock[indb]]):
                         thisType = typeEachSwitchLabels['HighBoundToLowBound']
                         trialsToCompare = validTrialsEachBlock[:,[indb+1,indb]] & trialsMidFreq[:,np.newaxis]
+                        trialsToCompare = validTrialsEachBlock[:,[indb+1,indb]] & trialsMidFreqCorrect[:,np.newaxis]
                     else:
                         thisType = -1
                         trialsToCompare = []
@@ -682,69 +702,6 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
                  eachCondLabel=eachCondLabel, meanRespEachCond=meanRespEachCond,
                  pValueMod=pValueMod)
 
-
-def OLD_save_summary_modulation(animalName,lockedTo='SoundOn'):
-    '''
-    THIS WORKS FOR A SINGLE ANIMAL
-    Create array with z-scores from all cells.
-    Data directories are defined in .../extracellpy/settings.py
-
-    Parameters
-    ----------
-    animalName: string. Name of animal.For example 'saja000'
-    lockedTo  : string. Currently only 'SoundOn' is supported.
-    '''
- 
-    # -- Load list of cells --
-    sys.path.append(settings.CELL_LIST_PATH)
-    dataModule = 'allcells_%s'%(animalName)
-    allcells = __import__(dataModule)
-    reload(allcells)
-    dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
-    dataDir = os.path.join(dataPath,'zscores_modulation_%s'%lockedTo)
-
-    # Because it is per block, I don't know how many yet
-    meanRespEachSwitch = np.empty((0,2)) # in spk/sec
-    pValueEachSwitch =  np.empty(0)
-    cellIDeachSwitch =  np.empty(0,dtype=int)
-    typeEachSwitch = np.empty(0,dtype=int)
-    strEachCell = []
-
-    nCells = len(allcells.cellDB)
-    meanRespEachCond = np.empty((nCells,2),dtype=float)
-    pValueMod = np.empty(nCells,dtype=float)
-    consistentMod =  np.zeros(nCells,dtype=bool)
-    
-    print 'Loading all modulation zscores... '
-    for indcell,onecell in enumerate(allcells.cellDB):
-        cellStr = str(onecell).replace(' ','_')
-        fileName = os.path.join(dataDir,'zscore_mod_'+cellStr+'_'+lockedTo+'.npz')
-        zScoreData = np.load(fileName)
-        nSwitchesThisCell = len(zScoreData['pValueEachSwitch'])
-
-        meanRespEachSwitch = np.vstack((meanRespEachSwitch,zScoreData['meanRespEachSwitch']))
-        pValueEachSwitch = np.hstack((pValueEachSwitch,zScoreData['pValueEachSwitch']))
-        typeEachSwitch = np.hstack((typeEachSwitch,zScoreData['typeEachSwitch']))
-        cellIDeachSwitch = np.hstack((cellIDeachSwitch,nSwitchesThisCell*[indcell]))
-        strEachCell.append(cellStr)
-        meanRespEachCond[indcell] = zScoreData['meanRespEachCond']
-        pValueMod[indcell] = zScoreData['pValueMod']
-
-        # -- Evaluate if consistent change across switches --
-        modDirEachCell = np.diff(zScoreData['meanRespEachSwitch'],axis=1)>0
-        sumModDir = np.sum(modDirEachCell)
-        if (sumModDir==0) | (sumModDir==nSwitchesThisCell):
-            consistentMod[indcell]=True
-
-    outputFileName = os.path.join(dataDir,'zscore_mod_All_%s_%s.npz'%(animalName,lockedTo))
-    print 'Saving summary to %s'%outputFileName
-    np.savez(outputFileName,strEachCell=strEachCell,meanRespEachSwitch=meanRespEachSwitch,
-             pValueEachSwitch=pValueEachSwitch,typeEachSwitch=typeEachSwitch,
-             typeEachSwitchLabels=zScoreData['typeEachSwitchLabels'],
-             cellIDeachSwitch=cellIDeachSwitch,
-             eachCondLabel=zScoreData['eachCondLabel'],
-             meanRespEachCond=meanRespEachCond,
-             pValueMod=pValueMod, consistentMod=consistentMod)
 
 def save_summary_modulation(animalsNames,lockedTo='SoundOn'):
     '''
@@ -772,7 +729,8 @@ def save_summary_modulation(animalsNames,lockedTo='SoundOn'):
     meanRespEachCond = np.empty((nCells,2),dtype=float)
     pValueMod = np.empty(nCells,dtype=float)
     consistentMod =  np.zeros(nCells,dtype=bool)
-    
+    nSwitches = np.zeros(nCells,dtype=int)
+
     print 'Loading all modulation zscores... '
     for indcell,onecell in enumerate(cellDB):
         dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
@@ -781,6 +739,7 @@ def save_summary_modulation(animalsNames,lockedTo='SoundOn'):
         fileName = os.path.join(dataDir,'zscore_mod_'+cellStr+'_'+lockedTo+'.npz')
         zScoreData = np.load(fileName)
         nSwitchesThisCell = len(zScoreData['pValueEachSwitch'])
+        nSwitches[indcell] = nSwitchesThisCell
 
         meanRespEachSwitch = np.vstack((meanRespEachSwitch,zScoreData['meanRespEachSwitch']))
         pValueEachSwitch = np.hstack((pValueEachSwitch,zScoreData['pValueEachSwitch']))
@@ -791,10 +750,14 @@ def save_summary_modulation(animalsNames,lockedTo='SoundOn'):
         pValueMod[indcell] = zScoreData['pValueMod']
 
         # -- Evaluate if consistent change across switches --
-        modDirEachCell = np.diff(zScoreData['meanRespEachSwitch'],axis=1)>0
+        modDirEachCell = np.ravel(np.diff(zScoreData['meanRespEachSwitch'],axis=1)>0)
         sumModDir = np.sum(modDirEachCell)
-        if (sumModDir==0) | (sumModDir==nSwitchesThisCell):
+        if ((sumModDir==0) | (sumModDir==nSwitchesThisCell)) & (nSwitchesThisCell>1):
             consistentMod[indcell]=True
+        if np.any(~np.diff(modDirEachCell)):
+            ## That is, if consistent for at least two consecutive switches ##
+            consistentMod[indcell]=True
+            pass
 
     strAllAnimals = '-'.join(animalsNames)
     outputDir = settings.PROCESSED_REVERSAL_PATH%('all')
@@ -807,6 +770,7 @@ def save_summary_modulation(animalsNames,lockedTo='SoundOn'):
              pValueEachSwitch=pValueEachSwitch,typeEachSwitch=typeEachSwitch,
              typeEachSwitchLabels=zScoreData['typeEachSwitchLabels'],
              cellIDeachSwitch=cellIDeachSwitch,
+             nSwitches=nSwitches,
              eachCondLabel=zScoreData['eachCondLabel'],
              meanRespEachCond=meanRespEachCond,
              pValueMod=pValueMod, consistentMod=consistentMod)
@@ -923,28 +887,45 @@ def load_summary_modulation(animalsNames,lockedTo='SoundOn'):
     modData = np.load(modFileName)
     return (modData,respData,cellDB)
 
-def plot_summary_modulation_TEMP(animalsNames,lockedTo='SoundOn'):
+def plot_summary_modulation_TEMP(animalsNames,lockedTo='SoundOn',nBins = 32):
     '''
     TEMP FUNCTION:
     This version is too restrictive. It is here just for illustration.
+
+    TO DO: color raster according to positive/negative response
     '''
     from scipy import stats
     (mdata,rdata,cellDB) = load_summary_modulation(animalsNames,lockedTo=lockedTo)
     if lockedTo=='SoundOn':
+        respRange = [0,0.15]
+        respSamples = (rdata['rangeStart']>=respRange[0]) & (rdata['rangeStart']<=respRange[-1])
+
+        ######### WARNING!!! selecting response for midFreq lowBound blocks ###########
+        zscores = rdata['zStatsEachCell'][:,4,:]
+        
+        #maxInd = np.argmax(abs(zscores[respSamples,:]),axis=0)
+        #maxVal = zscores[respSamples,:][maxInd,range(len(maxInd))]
+        #positiveResp = maxVal>0
+        positiveResp = np.mean(zscores[respSamples,:],axis=0)>0
+        selectedCells = rdata['responsiveMidFreq'] & (mdata['nSwitches']>0) & positiveResp
+        
         #respConsistSignif = (mdata['pValueMod']<0.05) & mdata['consistentMod'] & rdata['responsiveMidFreq']
-        dataToPlot = mdata['meanRespEachCond'][rdata['responsiveMidFreq']]
-        pValToPlot = mdata['pValueMod'][rdata['responsiveMidFreq']]
-        pValToPlot[~mdata['consistentMod'][rdata['responsiveMidFreq']]] = 1
+        dataToPlot = mdata['meanRespEachCond'][selectedCells]
+        pValToPlot = mdata['pValueMod'][selectedCells]
+        pValToPlot[~mdata['consistentMod'][selectedCells]] = 1
     elif lockedTo=='Cout':
-        dataToPlot = mdata['meanRespEachCond']
-        pValToPlot = mdata['pValueMod']
-        pValToPlot[~mdata['consistentMod']] = 1
+        soundResponsive = rdata['responsiveMidFreq']|rdata['responsiveHighFreq']|rdata['responsiveLowFreq']
+        #dataToPlot = mdata['meanRespEachCond']
+        #pValToPlot = mdata['pValueMod']
+        #pValToPlot[~mdata['consistentMod']] = 1
+        dataToPlot = mdata['meanRespEachCond'][soundResponsive]
+        pValToPlot = mdata['pValueMod'][soundResponsive]
+        pValToPlot[~mdata['consistentMod'][soundResponsive]] = 1
 
     # --- Plot results ---
     from extracellpy import extraplots
     plt.clf()
     plt.setp(plt.gcf(),facecolor='w')
-    nBins = 32 #14
     plt.subplot(1,2,1)
     extraplots.plot_index_histogram(dataToPlot[:,0],
                                     dataToPlot[:,1],
@@ -956,6 +937,511 @@ def plot_summary_modulation_TEMP(animalsNames,lockedTo='SoundOn'):
 
     (tstatw,pval) = stats.wilcoxon(dataToPlot[:,0],dataToPlot[:,1]) # paired test
     print 'p-value = %0.4f'%pval
+
+    
+def plot_summary_modulation_grouped(animalsNames,lockedTo='SoundOn',nBins = 16):
+    '''
+    Grouped and colored according to positive/negative response
+    '''
+    from scipy import stats
+    (mdata,rdata,cellDB) = load_summary_modulation(animalsNames,lockedTo=lockedTo)
+    if lockedTo=='SoundOn':
+        respRange = [0,0.15]
+        respSamples = (rdata['rangeStart']>=respRange[0]) & (rdata['rangeStart']<=respRange[-1])
+
+        midFreqInd = 4  # all trials with midFreq (both blocks)
+        zscores = rdata['zStatsEachCell'][:,midFreqInd,:]
+        
+        #maxInd = np.argmax(abs(zscores[respSamples,:]),axis=0)
+        #maxVal = zscores[respSamples,:][maxInd,range(len(maxInd))]
+        #positiveResp = maxVal>0
+        positiveResp = np.mean(zscores[respSamples,:],axis=0)>0
+        selectedCellsPos = rdata['responsiveMidFreq'] & (mdata['nSwitches']>0) & positiveResp
+        selectedCellsNeg = rdata['responsiveMidFreq'] & (mdata['nSwitches']>0) & ~positiveResp
+        
+        #respConsistSignif = (mdata['pValueMod']<0.05) & mdata['consistentMod'] & rdata['responsiveMidFreq']
+        dataToPlotPos = mdata['meanRespEachCond'][selectedCellsPos]
+        pValToPlotPos = mdata['pValueMod'][selectedCellsPos]
+        pValToPlotPos[~mdata['consistentMod'][selectedCellsPos]] = 1
+        
+        dataToPlotNeg = mdata['meanRespEachCond'][selectedCellsNeg]
+        pValToPlotNeg = mdata['pValueMod'][selectedCellsNeg]
+        pValToPlotNeg[~mdata['consistentMod'][selectedCellsNeg]] = 1
+        
+    elif lockedTo=='Cout':
+        soundResponsive = rdata['responsiveMidFreq']|rdata['responsiveHighFreq']|rdata['responsiveLowFreq']
+        #dataToPlot = mdata['meanRespEachCond']
+        #pValToPlot = mdata['pValueMod']
+        #pValToPlot[~mdata['consistentMod']] = 1
+        dataToPlot = mdata['meanRespEachCond'][soundResponsive]
+        pValToPlot = mdata['pValueMod'][soundResponsive]
+        pValToPlot[~mdata['consistentMod'][soundResponsive]] = 1
+
+    # --- Plot results ---
+    from extracellpy import extraplots
+    plt.clf()
+    plt.setp(plt.gcf(),facecolor='w')
+    plt.subplot(2,2,1)
+    extraplots.plot_index_histogram(dataToPlotPos[:,0],
+                                    dataToPlotPos[:,1],
+                                    pValue=pValToPlotPos,nBins=nBins)
+    plt.xlim([-0.6,0.6])
+    plt.subplot(2,2,3)
+    extraplots.plot_index_histogram(dataToPlotNeg[:,0],
+                                    dataToPlotNeg[:,1],
+                                    pValue=pValToPlotNeg,nBins=nBins)
+    plt.xlim([-0.6,0.6])
+    '''
+    extraplots.plot_scatter_groups([dataToPlotPos,dataToPlotNeg],
+                                   [pValToPlotPos,pValToPlotNeg],
+                                   color=['b','r'])
+    extraplots.plot_scatter_groups([np.log10(dataToPlotPos),np.log10(dataToPlotNeg)],
+                                   [pValToPlotPos,pValToPlotNeg],
+                                   color=['b','r'])
+    '''
+    axLims =[-1,1,-1,1]
+    plt.subplot(2,2,2)
+    extraplots.plot_scatter_groups([np.log10(dataToPlotPos)],
+                                   [pValToPlotPos],
+                                   color=['r'],axlims=axLims)
+    #plt.axis([-1,1,-1,1])
+    plt.subplot(2,2,4)
+    extraplots.plot_scatter_groups([np.log10(dataToPlotNeg)],
+                                   [pValToPlotNeg],
+                                   color=['b'],axlims=axLims)
+    #plt.axis([-1,1,-1,1])
+
+    (tstatw,pvalPos) = stats.wilcoxon(dataToPlotPos[:,0],dataToPlotPos[:,1]) # paired test
+    print 'p-value (POS) = %0.4f'%pvalPos
+    (tstatw,pvalNeg) = stats.wilcoxon(dataToPlotNeg[:,0],dataToPlotNeg[:,1]) # paired test
+    print 'p-value (NEG)= %0.4f'%pvalNeg
+    dataToPlot = np.vstack((dataToPlotPos,-dataToPlotNeg))
+    (tstatw,pval) = stats.wilcoxon(dataToPlot[:,0],dataToPlot[:,1]) # paired test
+    print 'p-value (POS & -NEG)= %0.4f'%pval
+
+    
+def save_zscores_earlylate(animalName,lockedTo='SoundOn'):
+    '''
+    Calculate z-scores between midFreq-Right and midFreq-Left
+    Data directories are defined in .../extracellpy/settings.py
+
+    Parameters
+    ----------
+    animalName: string. Name of animal.For example 'saja000'
+    lockedTo  : string. Tested for 'SoundOn' and 'Cout'.
+    '''
+
+    MIN_TRIALS_PER_BLOCK = 120 #75
+    ###N_FIRST_TRIALS = 40  # Using First and last third instead
+    ### CHECK BELOW TO SEE WHICH TRIALS ARE ACTUALLY BEING USED ###
+    #FRACTION_TO_ANALYZE = 5
+    
+    if lockedTo=='SoundOn':
+        responseRange = [0.010,0.150]
+
+    # -- Load list of cells --
+    sys.path.append(settings.CELL_LIST_PATH)
+    dataModule = 'allcells_%s'%(animalName)
+    allcells = __import__(dataModule)
+    reload(allcells)
+    dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
+    dataDir = os.path.join(dataPath,'lockedTo%s'%(lockedTo))
+    outputDir = os.path.join(dataPath,'zscores_earlylatetrials_%s'%lockedTo)
+
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+
+    #typeEachSwitchLabels = {'LowBoundToHighBound':0,'HighBoundToLowBound':1}
+    respDuration = np.diff(responseRange)
+
+    prevSession = ''
+    for indcell,onecell in enumerate(allcells.cellDB):
+        onecell = allcells.cellDB[indcell]
+
+        cellStr = str(onecell).replace(' ','_')
+        fileName = os.path.join(dataDir,cellStr+'_'+lockedTo+'.npz')
+        ephysData = np.load(fileName)
+
+        # -- Load behavior --
+        if ephysData['behavSession']==prevSession:
+            print 'Behavior already loaded'
+        else:
+            print 'Loading %s [%s] - %s'%(ephysData['animalName'],ephysData['behavSession'],cellStr)
+            behavData = sessionanalysis.load_behavior_session(ephysData['animalName'],
+                                                              ephysData['behavSession'])
+
+            trialsMidFreq = (behavData['TargetFreq']==behavData['FreqMid'][-1])
+            prevSession = ephysData['behavSession']
+            behavData.find_trials_each_block()
+
+        validTrials = ~behavData.early
+        validTrials[onecell.trialsToExclude] = False
+        validTrialsEachBlock = behavData.trialsEachBlock & validTrials[:,np.newaxis]
+        nBlocks = validTrialsEachBlock.shape[1]
+        nTrialsEachBlock = validTrialsEachBlock.sum(axis=0)
+        typeEachBlockLabels = {'LowBound':0,'HighBound':1}
+        avOutcome = []
+        typeEachBlock = []
+
+        # Because it is per block, I don't know how many yet
+        meanRespEachBlock = np.empty((0,2)) # in spk/sec
+        pValueEachBlock =  np.empty(0)
+        
+        for indb in range(1,nBlocks):
+            if nTrialsEachBlock[indb-1]<=1: # Exclude this block if previous was empty
+                continue
+            if nTrialsEachBlock[indb]>=MIN_TRIALS_PER_BLOCK:
+                if(behavData.lowFreqs[behavData.firstTrialEachBlock[indb]]):
+                    thisType = typeEachBlockLabels['LowBound']
+                    extremeFreq = behavData['FreqLow'][-1]
+                elif (behavData.highFreqs[behavData.firstTrialEachBlock[indb]]):
+                    thisType = typeEachBlockLabels['HighBound']
+                    extremeFreq = behavData['FreqHigh'][-1]
+                else:
+                    thisType = -1
+                extremeFreqTrials = behavData['TargetFreq']==extremeFreq
+                extFreqTrialsThisBlock = validTrialsEachBlock[:,indb] & extremeFreqTrials
+                trialInds = np.flatnonzero(extFreqTrialsThisBlock)
+                nExtValidThisBlock = len(trialInds)
+
+                #trialsToCompare = [trialInds[:nExtValidThisBlock//3],
+                #                   trialInds[2*nExtValidThisBlock//3:]]
+                #trialsToCompare = [trialInds[:nExtValidThisBlock//2],
+                #                   trialInds[nExtValidThisBlock//2:]]
+                trialsToCompare = [trialInds[:nExtValidThisBlock//4],
+                                   trialInds[3*nExtValidThisBlock//4:]]
+                #trialsToCompare = [trialInds[:nExtValidThisBlock//4],
+                #                   trialInds[nExtValidThisBlock//4:]]
+                
+                (meanSpikes,pValue) = spikesanalysis.evaluate_modulation(ephysData['spikeTimesFromEventOnset'],
+                                                                         ephysData['indexLimitsEachTrial'],
+                                                                         responseRange,trialsToCompare)
+                meanRespEachBlock = np.vstack((meanRespEachBlock,meanSpikes/respDuration))
+                pValueEachBlock = np.hstack((pValueEachBlock,pValue))
+                typeEachBlock.append(thisType)
+                avOutcomeEarlyTrials = np.mean(behavData['HitHistory'][trialsToCompare[0]] > 0)
+                avOutcomeLateTrials = np.mean(behavData['HitHistory'][trialsToCompare[1]] > 0)
+                avOutcome.append([avOutcomeEarlyTrials,avOutcomeLateTrials])
+        avOutcome = np.array(avOutcome)
+        typeEachBlock = np.array(typeEachBlock)
+        
+        # --- Save data for this cell ---
+        outputFileName = os.path.join(outputDir,'zscore_earlylate_'+cellStr+'_'+lockedTo+'.npz')
+        np.savez(outputFileName,responseRange=responseRange,
+                 typeEachBlockLabels=typeEachBlockLabels,
+                 typeEachBlock=typeEachBlock,
+                 meanRespEachBlock=meanRespEachBlock,
+                 pValueEachBlock=pValueEachBlock,
+                 avOutcome=avOutcome)
+
+        
+def save_summary_earlylate(animalsNames,lockedTo='SoundOn'):
+    '''
+    Create array with z-scores from all cells.
+    Data directories are defined in .../extracellpy/settings.py
+    Results are saved in settings.PROCESSED_REVERSAL_PATH
+      where %s is replaced by 'all'.
+
+    Parameters
+    ----------
+    animalsNames: string. Name of animal.For example 'saja000'
+    lockedTo  : string. Tested for 'SoundOn' and 'Cout'.
+    '''
+    cellDB = load_cells_database(animalsNames)
+    
+    # Because it is per block, I don't know how many yet
+    cellIDeachBlock =  np.empty(0,dtype=int)
+    typeEachBlock = np.empty(0,dtype=int)
+    avOutcome = np.empty((0,2),dtype=float)
+    nBlocks = np.empty(0,dtype=int)
+    meanRespEachBlock = np.empty((0,2),dtype=float) # in spk/sec
+    pValueEachBlock =  np.empty(0,dtype=float)
+    strEachCell = []
+
+    nCells = len(cellDB)
+
+    print 'Loading all zscores... '
+    for indcell,onecell in enumerate(cellDB):
+        dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+        dataDir = os.path.join(dataPath,'zscores_earlylatetrials_%s'%lockedTo)
+        cellStr = str(onecell).replace(' ','_')
+        fileName = os.path.join(dataDir,'zscore_earlylate_'+cellStr+'_'+lockedTo+'.npz')
+        zScoreData = np.load(fileName)
+        nBlocksThisCell = len(zScoreData['typeEachBlock'])
+        if nBlocksThisCell<1:
+            print 'No blocks for %s'%cellStr
+            continue
+        typeEachBlock = np.hstack((typeEachBlock,zScoreData['typeEachBlock']))
+        avOutcome = np.vstack((avOutcome,zScoreData['avOutcome']))
+        meanRespEachBlock = np.vstack((meanRespEachBlock,zScoreData['meanRespEachBlock']))
+        pValueEachBlock = np.hstack((pValueEachBlock,zScoreData['pValueEachBlock']))
+        nBlocks = np.hstack((nBlocks,nBlocksThisCell))
+        cellIDeachBlock = np.hstack((cellIDeachBlock,nBlocksThisCell*[indcell]))
+        
+    strAllAnimals = '-'.join(animalsNames)
+    outputDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+    outputFileName = os.path.join(outputDir,'summary_earlylate_%s_%s.npz'%(strAllAnimals,lockedTo))
+    print 'Saving summary to %s'%outputFileName
+    np.savez(outputFileName,strEachCell=strEachCell,
+             typeEachBlock=typeEachBlock,
+             typeEachBlockLabels=zScoreData['typeEachBlockLabels'],
+             cellIDeachBlock=cellIDeachBlock,
+             nBlocks=nBlocks,avOutcome=avOutcome,
+             meanRespEachBlock=meanRespEachBlock,pValueEachBlock=pValueEachBlock)
+
+def load_summary_earlylate(animalsNames,lockedTo='SoundOn'):
+    ''' 
+    Load summary of comparison early/late trials.
+
+    NOTE: response data is always with respect to SoundOn, but modulation
+          data can be w.r.t SoundOn or Cout
+    '''
+    lockedToResp = 'SoundOn'
+    cellDB = load_cells_database(animalsNames)
+    strAllAnimals = '-'.join(animalsNames)
+    dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    respFileName = os.path.join(dataDir,'summary_resp_%s_%s.npz'%(strAllAnimals,lockedToResp))
+    modFileName = os.path.join(dataDir,'summary_earlylate_%s_%s.npz'%(strAllAnimals,lockedTo))
+    respData = np.load(respFileName)
+    modData = np.load(modFileName)
+    return (modData,respData,cellDB)
+    
+def plot_summary_earlylate_TEMP(animalsNames,lockedTo='SoundOn',nBins = 32):
+    '''
+    TEMP FUNCTION: it needs to be finished
+    '''
+    (mdata,rdata,cellDB) = load_summary_earlylate(animalsNames,lockedTo=lockedTo)
+    meanRespEachBlock = np.empty((0,2),dtype=float)
+    avOutcome = np.empty((0,2),dtype=float)
+    pValueEachBlock =  np.empty(0,dtype=float)
+    if lockedTo=='SoundOn':
+        respRange = [0,0.2]
+        respSamples = (rdata['rangeStart']>=respRange[0]) & (rdata['rangeStart']<=respRange[-1])
+
+        for indtype in [0,1]:
+            if indtype==0: # Low freqs
+                print 'Analyzing LOW freq'
+                zscores = rdata['zStatsEachCell'][:,0,:]
+                freqLabel='responsiveLowFreq'  # LowFreq
+                blocksThisType = mdata['typeEachBlock']==mdata['typeEachBlockLabels'].item()['LowBound']
+            elif indtype==1: # High freqs
+                print 'Analyzing HIGH freq'
+                zscores = rdata['zStatsEachCell'][:,3,:]
+                freqLabel='responsiveHighFreq'  # HighFreq
+                blocksThisType = mdata['typeEachBlock']==mdata['typeEachBlockLabels'].item()['HighBound']
+
+            maxInd = np.argmax(abs(zscores[respSamples,:]),axis=0)
+            maxVal = zscores[respSamples,:][maxInd,range(len(maxInd))]
+            positiveResp = maxVal>0
+            #selectedCells = rdata[freqLabel] & (abs(maxVal)>5)
+            #selectedCells = rdata[freqLabel] & (maxVal>3); print('Only positive')
+            selectedCells = rdata[freqLabel]; print('Both responses')
+            
+            # -- Positive responses (enhancement) --
+            selectedCellsPos = selectedCells & positiveResp
+            selectedCellsPerBlock = selectedCellsPos[mdata['cellIDeachBlock']]
+            selectedBlocks = selectedCellsPerBlock & blocksThisType
+            posMeanRespEachBlock = mdata['meanRespEachBlock'][selectedBlocks,:]
+            posAvOutcome = mdata['avOutcome'][selectedBlocks,:]
+
+            # -- Negative resonses (suppression) --
+            selectedCellsNeg = selectedCells & ~positiveResp
+            selectedCellsPerBlock = selectedCellsNeg[mdata['cellIDeachBlock']]
+            selectedBlocks = selectedCellsPerBlock & blocksThisType
+            negMeanRespEachBlock = -mdata['meanRespEachBlock'][selectedBlocks,:]
+            negAvOutcome = mdata['avOutcome'][selectedBlocks,:]
+
+            # -- Only positive --
+            #avOutcome = np.vstack((avOutcome,posAvOutcome))
+            #meanRespEachBlock = np.vstack((meanRespEachBlock,posMeanRespEachBlock))
+            # -- Only negative --
+            #meanRespEachBlock = np.vstack((meanRespEachBlock,negMeanRespEachBlock))
+            #avOutcome = np.vstack((avOutcome,negAvOutcome))
+            # -- Both positive and negative --
+            avOutcome = np.vstack((avOutcome,posAvOutcome,negAvOutcome))
+            meanRespEachBlock = np.vstack((meanRespEachBlock,posMeanRespEachBlock,negMeanRespEachBlock))
+            modIndexEachBlock = (meanRespEachBlock[:,0]-meanRespEachBlock[:,1])/(meanRespEachBlock[:,0]+meanRespEachBlock[:,1])
+            
+            
+    # --- Plot results ---
+    from extracellpy import extraplots
+    plt.clf()
+    plt.setp(plt.gcf(),facecolor='w')
+
+    plt.subplot(2,3,1)
+    plt.plot(avOutcome[:,0],avOutcome[:,1],'o',mfc='None',mec='k')
+    plt.xlabel('Perf (early)')
+    plt.ylabel('Perf (late)')
+    plt.axis('equal')
+    plt.axis([0.5,1.05, 0.5,1.05])
+    plt.hold(True)
+    plt.plot([0,1],[0,1],color='0.75')
+    plt.hold(False)
+
+    plt.subplot(2,3,2)
+    plt.plot(meanRespEachBlock[:,0],meanRespEachBlock[:,1],'o',mfc='None',mec='k')
+    plt.xlabel('Response (early)')
+    plt.ylabel('Response (late)')
+    plt.axis('equal')
+    #plt.axis([0.5,1.05, 0.5,1.05])
+    plt.hold(True)
+    maxVal = np.max(meanRespEachBlock)
+    plt.plot([0,maxVal],[0,maxVal],color='0.75')
+    plt.hold(False)
+
+    plt.subplot(2,3,3)
+    diffPerf = avOutcome[:,0]-avOutcome[:,1]
+    #diffResp = meanRespEachBlock[:,0]-meanRespEachBlock[:,1]
+    diffResp = modIndexEachBlock
+    plt.plot(diffPerf,diffResp,'o',mfc='None',mec='k')
+    plt.xlabel('Percent corr (early-late)')
+    #plt.ylabel('Response (early-late)')
+    plt.ylabel('Mod index (early-late)/(early+late)')
+    plt.axhline(0,color='0.75')
+    plt.axvline(0,color='0.75')
+    #plt.axis([0.5,1.05, 0.5,1.05])
+
+    plt.subplot(2,3,4)
+    plt.hist(diffPerf,20)
+    plt.subplot(2,3,5)
+    plt.hist(diffResp,30)
+
+    plt.draw()
+    plt.show()        
+
+    
+    
+    #print(np.corrcoef(diffPerf,diffResp))
+    import scipy.stats as stats
+    (tstat,pOutcome) = stats.wilcoxon(avOutcome[:,0],avOutcome[:,1])
+    print "Outcome (early vs late) median=%0.4f mean=%0.4f (p=%0.4f)"%(np.median(diffPerf),np.mean(diffPerf),pOutcome)
+    (tstat,pResp) = stats.wilcoxon(meanRespEachBlock[:,0],meanRespEachBlock[:,1])
+    print "Response (early vs late) median=%0.4f mean=%0.4f (p=%0.4f)"%(np.median(diffResp),np.mean(diffResp),pResp)
+    (rho,pval) = stats.pearsonr(diffPerf,diffResp)
+    (srho,spval) = stats.spearmanr(diffPerf,diffResp)
+    print("(Pearson's) rho=%f  p=%f"%(rho,pval))
+    print("(Spearman's) rho=%f  p=%f"%(srho,spval))
+
+
+def save_zscores_bychoice(animalName,lockedTo='SoundOn'):
+    '''
+    Calculate z-scores for a given association sound-action between correct and incorrect
+    Data directories are defined in .../extracellpy/settings.py
+
+    Parameters
+    ----------
+    animalName: string. Name of animal.For example 'saja000'
+    lockedTo  : string. Tested for 'SoundOn' and 'Cout'.
+    '''
+    
+    MIN_TRIALS_PER_BLOCK = 75
+    if lockedTo=='SoundOn':
+        responseRange = [0.010,0.150]
+    elif lockedTo=='Cout':
+        responseRange = [0.000,0.250] # w.r.t Cout
+        responseRange = [0.150,0.400] # w.r.t SoundOn
+
+    # -- Load list of cells --
+    sys.path.append(settings.CELL_LIST_PATH)
+    dataModule = 'allcells_%s'%(animalName)
+    allcells = __import__(dataModule)
+    reload(allcells)
+    dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
+    dataDir = os.path.join(dataPath,'lockedTo%s'%(lockedTo))
+    outputDir = os.path.join(dataPath,'zscores_bychoice%s'%lockedTo)
+    
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+
+    #typeEachBlockLabels = {'LowBound':0,'HighBound':1}
+    respDuration = np.diff(responseRange)
+
+    prevSession = ''
+    for indcell,onecell in enumerate(allcells.cellDB):
+        cellStr = str(onecell).replace(' ','_')
+        fileName = os.path.join(dataDir,cellStr+'_'+lockedTo+'.npz')
+        ephysData = np.load(fileName)
+
+        # -- Load behavior --
+        if ephysData['behavSession']==prevSession:
+            print 'Behavior already loaded'
+        else:
+            print 'Loading %s [%s] - %s'%(ephysData['animalName'],ephysData['behavSession'],cellStr)
+            behavData = sessionanalysis.load_behavior_session(ephysData['animalName'],
+                                                              ephysData['behavSession'])
+
+            trialsMidFreq = (behavData['TargetFreq']==behavData['FreqMid'][-1])
+            prevSession = ephysData['behavSession']
+
+        # -- Find modulation for all blocks merged --
+        eachCondLabel = ['LowBoundBlock','HighBoundBlock']
+        validMidFreq = trialsMidFreq & ~behavData.early
+        validMidFreq[onecell.trialsToExclude] = False
+        validEachCond = np.c_[behavData.lowFreqs,behavData.highFreqs]
+        validMidFreqEachCond = validEachCond & validMidFreq[:,np.newaxis]
+        trialsToCompare = validMidFreqEachCond
+        
+        (meanRespEachCond,pValueMod) = spikesanalysis.evaluate_modulation(ephysData['spikeTimesFromEventOnset'],
+                                                                          ephysData['indexLimitsEachTrial'],
+                                                                          responseRange,list(trialsToCompare.T))
+
+        #########################################################
+        # WARNING!!! meanRespEachCond is in units of spks but meanRespEachSwitch in spks/sec
+        #########################################################
+
+        # Because it is per block, I don't know how many yet
+        meanRespEachSwitch = np.empty((0,2)) # in spk/sec  array with [lowBound,highBound]
+        pValueEachSwitch =  np.empty(0)
+        ### cellIDeachSwitch =  np.empty(0,dtype=int)  ### NOT NEEDED
+        typeEachSwitch = np.empty(0,dtype=int)
+
+        #########################################################
+        # WARNING!!! check that it works for old misaligned data
+        #########################################################
+
+        behavData.find_trials_each_block()
+        validTrials = ~behavData.early
+        validTrials[onecell.trialsToExclude] = False
+        validTrialsEachBlock = behavData.trialsEachBlock & validTrials[:,np.newaxis]
+        nBlocks = validTrialsEachBlock.shape[1]
+        nTrialsEachBlock = validTrialsEachBlock.sum(axis=0)
+
+        for indb in range(nBlocks):
+            if nTrialsEachBlock[indb]>=MIN_TRIALS_PER_BLOCK:
+                if (indb+1)<nBlocks and nTrialsEachBlock[indb+1]>=MIN_TRIALS_PER_BLOCK:
+                    if(behavData.lowFreqs[behavData.firstTrialEachBlock[indb]]):
+                        thisType = typeEachSwitchLabels['LowBoundToHighBound']
+                        trialsToCompare = validTrialsEachBlock[:,[indb,indb+1]] & trialsMidFreq[:,np.newaxis]
+                    elif (behavData.highFreqs[behavData.firstTrialEachBlock[indb]]):
+                        thisType = typeEachSwitchLabels['HighBoundToLowBound']
+                        trialsToCompare = validTrialsEachBlock[:,[indb+1,indb]] & trialsMidFreq[:,np.newaxis]
+                    else:
+                        thisType = -1
+                        trialsToCompare = []
+                    (meanSpikes,pValue) = spikesanalysis.evaluate_modulation(ephysData['spikeTimesFromEventOnset'],
+                                                                             ephysData['indexLimitsEachTrial'],
+                                                                             responseRange,list(trialsToCompare.T))
+                    meanRespEachSwitch = np.vstack((meanRespEachSwitch,meanSpikes/respDuration))
+                    pValueEachSwitch = np.hstack((pValueEachSwitch,pValue))
+                    typeEachSwitch = np.hstack((typeEachSwitch,thisType))
+                else:
+                    break
+
+            else:
+                continue
+        # --- Save data for this cell ---
+        outputFileName = os.path.join(outputDir,'zscore_mod_'+cellStr+'_'+lockedTo+'.npz')
+        np.savez(outputFileName,responseRange=responseRange,
+                 meanRespEachSwitch=meanRespEachSwitch,
+                 pValueEachSwitch=pValueEachSwitch, typeEachSwitch=typeEachSwitch,
+                 typeEachSwitchLabels=typeEachSwitchLabels,
+                 eachCondLabel=eachCondLabel, meanRespEachCond=meanRespEachCond,
+                 pValueMod=pValueMod)
 
     
 #def show_raster_figures(animalName,lockedTo,cellIndexList):

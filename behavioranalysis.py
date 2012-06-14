@@ -29,13 +29,15 @@ def parse_isodate(dateStr):
     dateElems = [int(x) for x in dateElems]
     return datetime.date(*dateElems)
 
-def reshape_by_session(allBehavData,maxNtrials=1500):
+def reshape_by_session(allBehavData,maxNtrials=1500,masked=False,keysToIgnore=[]):
     '''Reshape behavior data from many sessions, keeping only valid trials
     and organizing in masked arrays where each column is one session'''
     nSessions = len(unique(allBehavData['sessionID']))
     allBehavDataPerSession = {}
     mask = np.ones((maxNtrials,nSessions),dtype=bool)
     for key in allBehavData.keys():
+        if key in keysToIgnore:
+            continue
         typeThisKey = allBehavData[key].dtype
         allBehavDataPerSession[key] = np.empty((maxNtrials,nSessions),
                                                dtype=typeThisKey)
@@ -45,11 +47,16 @@ def reshape_by_session(allBehavData,maxNtrials=1500):
         nValidThisSession = sum(validTrialsThisSession)
         if nValidThisSession>maxNtrials:
             raise ValueError('Session has more trials than max allowed')
-        for key in allBehavData.keys():
-            allBehavDataPerSession[key][:nValidThisSession,inds] = \
-                allBehavData[key][validTrialsThisSession]   
-            mask[:nValidThisSession,inds]=False
+        mask[:nValidThisSession,inds]=False
         allBehavDataPerSession['mask']=mask
+        for key in allBehavData.keys():
+            if key in keysToIgnore:
+                continue
+            allBehavDataPerSession[key][:nValidThisSession,inds] = \
+                allBehavData[key][validTrialsThisSession] 
+            if masked:
+                allBehavDataPerSession[key] = np.ma.masked_array(allBehavDataPerSession[key],
+                                                                 mask=mask)
     return allBehavDataPerSession
     
 
@@ -77,7 +84,7 @@ def reshape_by_session_OLD(allBehavData):
     
 
 def save_many_sessions_reversal(animalNames,datesRange,outputFile,paramsToSave,
-                                dtypes=[],dataClass=None,datesList=[],compression=None,
+                                dtypes=[],dataClass=None,sessionsList=[],compression=None,
                                 saveDate=False):
     '''Save selected parameters from a set of sessions.
     Example parameters:
@@ -90,18 +97,21 @@ def save_many_sessions_reversal(animalNames,datesRange,outputFile,paramsToSave,
     allBehavData (a dict with all session concatenated) and two additional
     keys, animalID and sessionID
 
-    It saves the dict allBehavData serialized (using pickle).
+    It saves the dict allBehavData as HDF5.
     '''
+    if isinstance(animalNames,str):
+        animalNames = [animalNames]
     if not dataClass:
         from extracellpy import loadbehavior
         dataClass = loadbehavior.ReversalBehaviorData
-    if datesList:
-        allDates = datesList
+    if sessionsList:
+        allSessions = sessionsList
     else:
         datesLims = [parse_isodate(dateStr) for dateStr in datesRange]
         allDates = [datesLims[0]+datetime.timedelta(n) \
                         for n in range((datesLims[-1]-datesLims[0]).days+1)]
-
+        allSessions = [oneDate.strftime('%Y%m%da') for oneDate in allDates]
+        
     nAnimals = len(animalNames)
     dataFileFormat = 'data_saja_reversal_santiago_%s_%s.h5'
 
@@ -119,8 +129,7 @@ def save_many_sessions_reversal(animalNames,datesRange,outputFile,paramsToSave,
         allBehavData[key] = np.empty(0,dtype=dtype)
     for inda in range(nAnimals):
         animalName = animalNames[inda]
-        for indd,oneDate in enumerate(allDates):
-            behavSession = oneDate.strftime('%Y%m%da')
+        for indd,behavSession in enumerate(allSessions):
             behavDataDir = os.path.join(BEHAVIORPATH,'%s/'%(animalName))
             behavFileName = dataFileFormat%(animalName,behavSession)
             behavFile = os.path.join(behavDataDir,behavFileName)
@@ -154,6 +163,7 @@ def save_many_sessions_reversal(animalNames,datesRange,outputFile,paramsToSave,
     if saveDate:
         allBehavData['sessionName'] = np.array(sessionArray)
     if outputFile:
+        print 'Saving to %s'%outputFile
         save_dict_as_HDF5(outputFile,allBehavData,compression=compression)
     return allBehavData
 
