@@ -229,8 +229,6 @@ def save_raster_plots(animalName,groupedBy='4cond'):
     allcells = __import__(dataModule)
     reload(allcells)
 
-    #groupedBy = '4cond'
-    #oneLock = 'SoundOn'
     for oneLock in ['SoundOn', 'Cout', 'SideIn']:
         dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
         dataDir = os.path.join(dataPath,'lockedTo%s'%(oneLock))
@@ -599,7 +597,7 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
         responseRange = [0.010,0.150]
     elif lockedTo=='Cout':
         responseRange = [0.000,0.250] # w.r.t Cout
-        responseRange = [0.150,0.400] # w.r.t SoundOn
+        #responseRange = [0.150,0.400] # w.r.t SoundOn
 
     # -- Load list of cells --
     sys.path.append(settings.CELL_LIST_PATH)
@@ -1337,13 +1335,13 @@ def save_zscores_bychoice(animalName,lockedTo='SoundOn'):
     animalName: string. Name of animal.For example 'saja000'
     lockedTo  : string. Tested for 'SoundOn' and 'Cout'.
     '''
-    
+
     MIN_TRIALS_PER_BLOCK = 75
     if lockedTo=='SoundOn':
         responseRange = [0.010,0.150]
     elif lockedTo=='Cout':
         responseRange = [0.000,0.250] # w.r.t Cout
-        responseRange = [0.150,0.400] # w.r.t SoundOn
+        #responseRange = [0.150,0.400] # w.r.t SoundOn
 
     # -- Load list of cells --
     sys.path.append(settings.CELL_LIST_PATH)
@@ -1352,13 +1350,12 @@ def save_zscores_bychoice(animalName,lockedTo='SoundOn'):
     reload(allcells)
     dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
     dataDir = os.path.join(dataPath,'lockedTo%s'%(lockedTo))
-    outputDir = os.path.join(dataPath,'zscores_bychoice%s'%lockedTo)
-    
+    outputDir = os.path.join(dataPath,'zscores_bychoice_%s'%lockedTo)
+
     if not os.path.exists(outputDir):
         print 'Creating output directory: %s'%(outputDir)
         os.makedirs(outputDir)
 
-    #typeEachBlockLabels = {'LowBound':0,'HighBound':1}
     respDuration = np.diff(responseRange)
 
     prevSession = ''
@@ -1377,75 +1374,171 @@ def save_zscores_bychoice(animalName,lockedTo='SoundOn'):
 
             trialsMidFreq = (behavData['TargetFreq']==behavData['FreqMid'][-1])
             prevSession = ephysData['behavSession']
-
         # -- Find modulation for all blocks merged --
-        eachCondLabel = ['LowBoundBlock','HighBoundBlock']
+        eachCondLabel = ['RightwardChoice','LeftwardChoice']
         validMidFreq = trialsMidFreq & ~behavData.early
         validMidFreq[onecell.trialsToExclude] = False
-        validEachCond = np.c_[behavData.lowFreqs,behavData.highFreqs]
-        validMidFreqEachCond = validEachCond & validMidFreq[:,np.newaxis]
-        trialsToCompare = validMidFreqEachCond
+        validEachCond = np.c_[behavData.rightChoice,behavData.leftChoice]
+
+        trialsToCompare = validEachCond & validMidFreq[:,np.newaxis]
+        trialsToCompareLowBound = validEachCond & validMidFreq[:,np.newaxis] & behavData.lowFreqs[:,np.newaxis]
+        trialsToCompareHighBound = validEachCond & validMidFreq[:,np.newaxis] & behavData.highFreqs[:,np.newaxis]
         
-        (meanRespEachCond,pValueMod) = spikesanalysis.evaluate_modulation(ephysData['spikeTimesFromEventOnset'],
-                                                                          ephysData['indexLimitsEachTrial'],
-                                                                          responseRange,list(trialsToCompare.T))
+        (meanRespEachCondLowBound,pValueModLowBound) = \
+            spikesanalysis.evaluate_modulation(ephysData['spikeTimesFromEventOnset'],
+                                               ephysData['indexLimitsEachTrial'],
+                                               responseRange,list(trialsToCompareLowBound.T))
+        (meanRespEachCondHighBound,pValueModHighBound) = \
+            spikesanalysis.evaluate_modulation(ephysData['spikeTimesFromEventOnset'],
+                                               ephysData['indexLimitsEachTrial'],
+                                               responseRange,list(trialsToCompareHighBound.T))
+        nTrialsLowBound = np.sum(trialsToCompareLowBound,axis=0)
+        nTrialsHighBound = np.sum(trialsToCompareHighBound,axis=0)
 
-        #########################################################
-        # WARNING!!! meanRespEachCond is in units of spks but meanRespEachSwitch in spks/sec
-        #########################################################
+        meanRespEachCond = np.vstack((meanRespEachCondLowBound,meanRespEachCondHighBound)) #Each row is one block-type
+        blockTypeLabel = ['LowBound','HighBound']
+        blockType = np.array([0,1])
+        pValueMod = np.hstack((pValueModLowBound,pValueModHighBound))
+        nTrialsEachCond = np.vstack((nTrialsLowBound,nTrialsHighBound))
 
-        # Because it is per block, I don't know how many yet
-        meanRespEachSwitch = np.empty((0,2)) # in spk/sec  array with [lowBound,highBound]
-        pValueEachSwitch =  np.empty(0)
-        ### cellIDeachSwitch =  np.empty(0,dtype=int)  ### NOT NEEDED
-        typeEachSwitch = np.empty(0,dtype=int)
+        #meanRespEachCondLowBound=meanRespEachCondLowBound, pValueModLowBound=pValueModLowBound,
+        #meanRespEachCondHighBound=meanRespEachCondHighBound,pValueModHighBound=pValueModHighBound,
 
-        #########################################################
-        # WARNING!!! check that it works for old misaligned data
-        #########################################################
-
-        behavData.find_trials_each_block()
-        validTrials = ~behavData.early
-        validTrials[onecell.trialsToExclude] = False
-        validTrialsEachBlock = behavData.trialsEachBlock & validTrials[:,np.newaxis]
-        nBlocks = validTrialsEachBlock.shape[1]
-        nTrialsEachBlock = validTrialsEachBlock.sum(axis=0)
-
-        for indb in range(nBlocks):
-            if nTrialsEachBlock[indb]>=MIN_TRIALS_PER_BLOCK:
-                if (indb+1)<nBlocks and nTrialsEachBlock[indb+1]>=MIN_TRIALS_PER_BLOCK:
-                    if(behavData.lowFreqs[behavData.firstTrialEachBlock[indb]]):
-                        thisType = typeEachSwitchLabels['LowBoundToHighBound']
-                        trialsToCompare = validTrialsEachBlock[:,[indb,indb+1]] & trialsMidFreq[:,np.newaxis]
-                    elif (behavData.highFreqs[behavData.firstTrialEachBlock[indb]]):
-                        thisType = typeEachSwitchLabels['HighBoundToLowBound']
-                        trialsToCompare = validTrialsEachBlock[:,[indb+1,indb]] & trialsMidFreq[:,np.newaxis]
-                    else:
-                        thisType = -1
-                        trialsToCompare = []
-                    (meanSpikes,pValue) = spikesanalysis.evaluate_modulation(ephysData['spikeTimesFromEventOnset'],
-                                                                             ephysData['indexLimitsEachTrial'],
-                                                                             responseRange,list(trialsToCompare.T))
-                    meanRespEachSwitch = np.vstack((meanRespEachSwitch,meanSpikes/respDuration))
-                    pValueEachSwitch = np.hstack((pValueEachSwitch,pValue))
-                    typeEachSwitch = np.hstack((typeEachSwitch,thisType))
-                else:
-                    break
-
-            else:
-                continue
         # --- Save data for this cell ---
-        outputFileName = os.path.join(outputDir,'zscore_mod_'+cellStr+'_'+lockedTo+'.npz')
+        outputFileName = os.path.join(outputDir,'zscore_bychoice_'+cellStr+'_'+lockedTo+'.npz')
         np.savez(outputFileName,responseRange=responseRange,
-                 meanRespEachSwitch=meanRespEachSwitch,
-                 pValueEachSwitch=pValueEachSwitch, typeEachSwitch=typeEachSwitch,
-                 typeEachSwitchLabels=typeEachSwitchLabels,
-                 eachCondLabel=eachCondLabel, meanRespEachCond=meanRespEachCond,
+                 meanRespEachCond=meanRespEachCond,
+                 eachCondLabel=eachCondLabel,
+                 blockType=blockType,blockTypeLabel=blockTypeLabel,
+                 nTrialsEachCond=nTrialsEachCond,
                  pValueMod=pValueMod)
 
+def save_summary_bychoice(animalsNames,lockedTo='SoundOn'):
+    '''
+    Create array with z-scores from all cells.
+    Data directories are defined in .../extracellpy/settings.py
+    Results are saved in settings.PROCESSED_REVERSAL_PATH
+      where %s is replaced by 'all'.
+
+    Parameters
+    ----------
+    animalsNames: string. Name of animal.For example 'saja000'
+    lockedTo  : string. Tested for 'SoundOn'
+    '''
+    cellDB = load_cells_database(animalsNames)
+    nCells = len(cellDB)
+    
+    meanRespEachType = np.empty((2*nCells,2),dtype=float)
+    nTrialsEachCond = np.empty((2*nCells,2),dtype=int)
+    blockType = np.empty(2*nCells,dtype=int)
+    pValueMod = np.empty(2*nCells,dtype=float)
+    cellIDeachType = np.empty(2*nCells,dtype=int)
+    strEachCell = []
+
+    print 'Loading all zscores... '
+    for indcell,onecell in enumerate(cellDB):
+        dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+        dataDir = os.path.join(dataPath,'zscores_bychoice_%s'%lockedTo)
+        cellStr = str(onecell).replace(' ','_')
+        fileName = os.path.join(dataDir,'zscore_bychoice_'+cellStr+'_'+lockedTo+'.npz')
+        zScoreData = np.load(fileName)
+
+        thisCellInds = indcell*2 + np.arange(2)
+        meanRespEachType[thisCellInds,:] = zScoreData['meanRespEachCond']
+        blockType[thisCellInds] = zScoreData['blockType']
+        pValueMod[thisCellInds] = zScoreData['pValueMod']
+        nTrialsEachCond[thisCellInds,:] = zScoreData['nTrialsEachCond']
+        cellIDeachType[thisCellInds] = indcell
+        strEachCell.extend([cellStr,cellStr])
+        
+    strAllAnimals = '-'.join(animalsNames)
+    outputDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+    outputFileName = os.path.join(outputDir,'summary_bychoice_%s_%s.npz'%(strAllAnimals,lockedTo))
+    print 'Saving summary to %s'%outputFileName
+    np.savez(outputFileName,strEachCell=strEachCell,
+             meanRespEachType=meanRespEachType,
+             blockType=blockType,pValueMod=pValueMod,
+             nTrialsEachCond=nTrialsEachCond,cellIDeachType=cellIDeachType,
+             eachCondLabel=zScoreData['eachCondLabel'],
+             blockTypeLabel=zScoreData['blockTypeLabel'])
+
+def load_summary_bychoice(animalsNames,lockedTo='SoundOn'):
+    ''' 
+    Load summary of modulation, responses and list of cells.
+
+    NOTE: response data is always with respect to SoundOn, but modulation
+          data can be w.r.t SoundOn or Cout
+    '''
+    lockedToResp = 'SoundOn'
+    cellDB = load_cells_database(animalsNames)
+    strAllAnimals = '-'.join(animalsNames)
+    dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    respFileName = os.path.join(dataDir,'summary_resp_%s_%s.npz'%(strAllAnimals,lockedToResp))
+    modFileName = os.path.join(dataDir,'summary_bychoice_%s_%s.npz'%(strAllAnimals,lockedTo))
+    respData = np.load(respFileName)
+    modData = np.load(modFileName)
+    return (modData,respData,cellDB)
+
+def plot_summary_bychoice_TEMP(animalsNames,lockedTo='SoundOn',nBins = 32):
+    '''
+    TEMP FUNCTION: it needs to be finished
+    '''
+    from scipy import stats
+    (mdata,rdata,cellDB) = load_summary_bychoice(animalsNames,lockedTo='SoundOn')
+
+    meanRespEachType = mdata['meanRespEachType']
+    pValueMod = mdata['pValueMod']
+
+    MIN_TRIALS_PER_COND = 25
+
+    respRange = [0,0.15]
+    respSamples = (rdata['rangeStart']>=respRange[0]) & (rdata['rangeStart']<=respRange[-1])
+    midFreqInd = 4  # all trials with midFreq (both blocks)
+    zscores = rdata['zStatsEachCell'][:,midFreqInd,:]
+    positiveResp = np.mean(zscores[respSamples,:],axis=0)>0
+    positiveConds = positiveResp[mdata['cellIDeachType']]
+
+    responsiveCells = rdata['responsiveMidFreqCombined']
+    responsiveConds = responsiveCells[mdata['cellIDeachType']]
+    enoughTrials = np.sum(mdata['nTrialsEachCond']>MIN_TRIALS_PER_COND, axis=1)>1
+    selectedItems = responsiveConds & enoughTrials & positiveConds
+    selectedItemsNeg = responsiveConds & enoughTrials & ~positiveConds  
+    #selectedItems = enoughTrials & positiveConds  
+    #selectedItems = selectedItems & (mdata['blockType']==1)  # -- Only one block type --
+
+    #dataToPlot = np.vstack((meanRespEachType[selectedItems,:],-meanRespEachType[selectedItemsNeg,:]))
+    #pValueToPlot = np.hstack((pValueMod[selectedItems],pValueMod[selectedItemsNeg]))
+    # -- only positive --
+    dataToPlot = meanRespEachType[selectedItems,:]
+    pValueToPlot = pValueMod[selectedItems]
+    # -- only negative --
+    #dataToPlot = meanRespEachType[selectedItemsNeg,:]
+    #pValueToPlot = pValueMod[selectedItemsNeg]
+
+    plt.clf()
+    plt.subplot(1,2,1)
+    extraplots.plot_scatter(dataToPlot[:,0],dataToPlot[:,1],pValueToPlot,fontSize=12)
+    #extraplots.plot_scatter(np.log10(meanRespEachType[:,0]),np.log10(meanRespEachType[:,1]),pValueMod,fontSize=12)
+
+    plt.subplot(1,2,2)
+    extraplots.plot_index_histogram(dataToPlot[:,0],dataToPlot[:,1],pValueToPlot,nBins=nBins,fontSize=12)
+
+    plt.draw()
+    plt.show()
+
+    (tstatw,pval) = stats.wilcoxon(dataToPlot[:,0],dataToPlot[:,1]) # paired test
+    print 'p-value = %0.4f'%pval
+
+    MI = (dataToPlot[:,0]-dataToPlot[:,1])/np.abs(dataToPlot[:,0]+dataToPlot[:,1])
+    print 'MI median = %0.4f'%(np.median(MI))
+
+    
     
 #def show_raster_figures(animalName,lockedTo,cellIndexList):
-def show_raster_figures(cellDB,lockedTo='SoundOn'):
+def show_raster_figures(cellDB,lockedTo='SoundOn',groupedBy='4cond'):
     '''
     Show raster figured (previously saved as PNG) for each cell in cellDB
 
@@ -1464,7 +1557,7 @@ def show_raster_figures(cellDB,lockedTo='SoundOn'):
         #reload(allcells)
 
         dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
-        figDir = os.path.join(dataPath,'rasters_lockedTo%s_4cond'%lockedTo)
+        figDir = os.path.join(dataPath,'rasters_lockedTo%s_%s'%(lockedTo,groupedBy))
         figFilename = figFilenameFormat%(onecell.animalName,onecell.ephysSession,
                                          onecell.tetrode,onecell.cluster)
         img=mpimg.imread(os.path.join(figDir,figFilename))

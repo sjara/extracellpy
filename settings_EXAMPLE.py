@@ -27,6 +27,8 @@ PROCESSED_REVERSAL_PATH = '/var/data/neuralynx/%s_test/'
 ###PROCESSED_REVERSAL_PATH = '/var/data/neuralynx/%s_processed/'
 ###RASTER_PLOTS_REVERSAL_PATH = '/var/data/neuralynx/%s_rasters/'
 
+KK_PATH = '/var/misc/toolbox/KK2/KlustaKwik'
+
 # -- DO NOT EDIT BELOW ---
 CLUSTERS_REPORTS_DIR = 'cluster_reports'
 

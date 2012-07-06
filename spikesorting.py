@@ -9,13 +9,125 @@ from extracellpy import loadneuralynx
 from extracellpy import extraplots
 import numpy as np
 import os
+import subprocess
+import time
 
 __author__ = 'Santiago Jaramillo'
 __version__ = '0.1'
 
-BEHAVIORPATH = settings.BEHAVIOR_PATH
+
 SAMPLES_PER_SPIKE = 32
 N_CHANNELS = 4
+
+class SessionToCluster(object):
+    pass
+    '''
+    def __init__(self,animalName,ephysSession,tetrodeList):
+    for indt,tetrode in enumerate(tetrodeList):
+        if isinstance(self.tetrodeList,int):
+            tetrodeList = [tetrodeList]
+    '''
+    
+class TetrodeToCluster(object):
+    def __init__(self,animalName,ephysSession,tetrode):
+        self.animalName = animalName
+        self.ephysSession = ephysSession
+        self.tetrode = tetrode
+        self.dataTT = None
+        
+        self.dataDir = os.path.join(settings.EPHYS_PATH,'%s/%s/'%(self.animalName,self.ephysSession))
+        self.clustersDir = os.path.join(settings.EPHYS_PATH,'%s/%s_kk/'%(self.animalName,self.ephysSession))
+        self.tetrodeFile = os.path.join(self.dataDir,'TT%d.ntt'%tetrode)
+        self.fetFilename = os.path.join(self.clustersDir,'TT%d.fet.1'%self.tetrode)
+                
+        self.featureNames = ['peak','valley','energy']
+        self.nFeatures = len(self.featureNames)
+        self.featureValues = None
+
+        self.process = None
+    def load_waveforms(self):
+        print 'Loading data...'
+        self.dataTT = loadneuralynx.DataTetrode(self.tetrodeFile,readWaves=True)
+        self.dataTT.samples = self.dataTT.samples.reshape((N_CHANNELS,SAMPLES_PER_SPIKE,-1),order='F')
+    def create_fet_files(self):
+        # -- Create output directory --
+        if not os.path.exists(self.clustersDir):
+            print 'Creating clusters directory: %s'%(self.clustersDir)
+            os.makedirs(self.clustersDir)
+        self.load_waveforms()
+        self.featureValues = calculate_features(self.dataTT.samples,self.featureNames)
+        write_fet_file(self.fetFilename,self.featureValues)
+    def run_clustering(self):
+        # FIXME: it should not depend on dataTT, that way one can run it with just the FET file
+        maxNumberOfEventsToUse = 1e5
+        Subset = np.floor(self.dataTT.nEvents/min(self.dataTT.nEvents,maxNumberOfEventsToUse))
+        MaxPossibleClusters = 12
+        UseFeatures = (self.nFeatures*N_CHANNELS)*'1'
+        KKparamsFormat = '-Subset %d -MinClusters 10 -MaxClusters 24 -MaxPossibleClusters %d -UseFeatures %s';
+        KKparams = KKparamsFormat%(Subset,MaxPossibleClusters,UseFeatures)
+        KKtetrode = 'TT%s'%(self.tetrode)
+        KKsuffix = '1'
+        KKpath = settings.KK_PATH
+        commandToRun = '%s %s %s %s'%(KKpath,KKtetrode,KKsuffix,KKparams)
+        print commandToRun
+        self.process = subprocess.Popen([KKpath,KKtetrode,KKsuffix,KKparams],stdout=subprocess.PIPE,cwd=self.clustersDir)
+        while self.process.poll() is None:
+            print 'Not yet: %f'%(time.time())
+            time.sleep(4)
+        print 'Done!'
+
+        #/home/bard/toolbox/KK2/KlustaKwik TT1 1 -Subset 1 -MinClusters 10 -MaxClusters 24 -MaxPossibleClusters 12 -UseFeatures 111111111111&
+
+'''
+subprocess.call(['scp','/var/tmp/CageTheElephant.iso','bard@bard02:/tmp/'])
+myp=subprocess.Popen(['scp','/var/tmp/CageTheElephant.iso','bard@bard02:/tmp/'],stdout=subprocess.PIPE)
+
+'''
+def calculate_features(waveforms,featureNames):
+    '''
+    waveforms: [nChans, nSamp, nSpikes]
+    featureNames: array of strings: 'peak','valley','energy'
+    '''
+    nFeatures = len(featureNames)
+    [nChans, nSamp, nSpikes] = waveforms.shape
+    #featureValues = np.empty((nSpikes,nChans*nFeatures),dtype=float)
+    featureValues = np.empty((nSpikes,0),dtype=float)
+    for oneFeature in featureNames:
+        print 'Calculating %s ...'%oneFeature
+        if oneFeature=='peak':
+            theseValues = waveforms.max(axis=1).T
+            featureValues = np.hstack((featureValues,theseValues))
+        elif oneFeature=='valley':
+            theseValues = waveforms.min(axis=1).T
+            featureValues = np.hstack((featureValues,theseValues))
+        if oneFeature=='energy':
+            theseValues = np.sqrt(np.sum(waveforms.astype(float)**2,axis=1)).T
+            featureValues = np.hstack((featureValues,theseValues))
+    return featureValues
+
+def write_fet_file(filename,fetArray):
+    print 'Saving features to %s'%filename
+    nFeatures = fetArray.shape[1]
+    fid = open(filename,'w')
+    fid.write('%d\n'%nFeatures)
+    for onerow in fetArray:
+        #strarray = ['%0.2f'%val for val in onerow]
+        strarray = ['%f'%val for val in onerow]
+        oneline = '\t'.join(strarray) + '\n'
+        fid.write(oneline)
+    fid.close()
+
+def pp_features(featureValues,nvals=4):
+    for indr in range(nvals):
+        for oneval in featureValues[indr,:]:
+            print '%0.2f '%oneval,
+        print ''
+    print ' ...'
+    for oneval in featureValues[-1,:]:
+        print '%0.2f '%oneval,
+    print ''
+    
+ 
 
 def plot_isi_loghist(timeStamps,nBins=350,fontsize=8):
     '''

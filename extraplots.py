@@ -228,7 +228,7 @@ def plot_index_histogram(val1,val2,pValue,nBins=14,fontSize=12):
     returns (allbars,signifbars)
     where allbars is (y,x,patches)
     '''
-    MI = (val1-val2)/(val1+val2)
+    MI = (val1-val2)/np.abs(val1+val2)
     MIsignif = MI[pValue<0.05]
     if np.any(np.isnan(MI)):
         print 'MI contains NaN'
@@ -256,15 +256,22 @@ def plot_index_histogram(val1,val2,pValue,nBins=14,fontSize=12):
     mpl.show()
     return(allbars,signifbars)
 
-def plot_scatter(val1,val2,pValue,fontSize=12):
+def plot_scatter(val1,val2,pValue,axlims=None,fontSize=12):
+    if axlims is None:
+        maxRate = np.nanmax([val1,val2])
+        minRate = np.nanmin([val1,val2])
+    else:
+        maxRate = axlims[1]
+        minRate = axlims[0]
+    if np.isinf(maxRate) or np.isinf(minRate):
+        print 'One of the limits if INFINITE'
     hp = mpl.plot(val1,val2,'o',mfc='none',mec='0.5')
     signifPoints = pValue<0.05
     mpl.hold(True)
     hp = mpl.plot(val1[signifPoints],val2[signifPoints],'o',mfc='k',mec='k')
-    maxRate = np.nanmax([val1,val2])
-    hline = mpl.plot([0,maxRate],[0,maxRate],'0.0',linestyle='--')
+    hline = mpl.plot([minRate,maxRate],[minRate,maxRate],'0.0',linestyle='--')
     mpl.hold(False)
-    mpl.axis([0,maxRate,0,maxRate])
+    mpl.axis([minRate,maxRate,minRate,maxRate])
     #mpl.axis('equal')
     mpl.xlabel('x1')
     mpl.ylabel('x2')
