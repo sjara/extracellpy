@@ -37,9 +37,13 @@ class TetrodeToCluster(object):
         
         self.dataDir = os.path.join(settings.EPHYS_PATH,'%s/%s/'%(self.animalName,self.ephysSession))
         self.clustersDir = os.path.join(settings.EPHYS_PATH,'%s/%s_kk/'%(self.animalName,self.ephysSession))
+        self.reportDir = os.path.join(settings.EPHYS_PATH,'%s/%s_report/'%(self.animalName,self.ephysSession))
         self.tetrodeFile = os.path.join(self.dataDir,'TT%d.ntt'%tetrode)
         self.fetFilename = os.path.join(self.clustersDir,'TT%d.fet.1'%self.tetrode)
-                
+
+        self.reportFileName = '%s_%s_T%02d.png'%(self.animalName,ephysSession,tetrode)
+        self.report = None
+        
         self.featureNames = ['peak','valley','energy']
         self.nFeatures = len(self.featureNames)
         self.featureValues = None
@@ -70,13 +74,22 @@ class TetrodeToCluster(object):
         KKpath = settings.KK_PATH
         commandToRun = '%s %s %s %s'%(KKpath,KKtetrode,KKsuffix,KKparams)
         print commandToRun
-        self.process = subprocess.Popen([KKpath,KKtetrode,KKsuffix,KKparams],stdout=subprocess.PIPE,cwd=self.clustersDir)
+        # NOTE: redirecting to PIPE did not work. The process goes idle after 20+ sec.
+        #self.process = subprocess.Popen([KKpath,KKtetrode,KKsuffix,KKparams],stdout=subprocess.PIPE,cwd=self.clustersDir)
+        self.process = subprocess.Popen([KKpath,KKtetrode,KKsuffix,KKparams],stdout=open('/dev/null','w'),cwd=self.clustersDir)
+        '''
         while self.process.poll() is None:
             print 'Not yet: %f'%(time.time())
             time.sleep(4)
         print 'Done!'
+        '''
+    def save_report(self):
+        if self.dataTT is None:
+            self.load_waveforms()
+        self.dataTT.set_clusters(os.path.join(self.clustersDir,'TT%d.clu.1'%self.tetrode))
+        self.report = ClusterReportFromData(self.dataTT,outputDir=self.reportDir,filename=self.reportFileName,showfig=False)
+        
 
-        #/home/bard/toolbox/KK2/KlustaKwik TT1 1 -Subset 1 -MinClusters 10 -MaxClusters 24 -MaxPossibleClusters 12 -UseFeatures 111111111111&
 
 '''
 subprocess.call(['scp','/var/tmp/CageTheElephant.iso','bard@bard02:/tmp/'])
@@ -230,21 +243,21 @@ class ClusterReportFromData(object):
     '''
     Need to finish reports when more than nrows<clusters.
     '''
-    def __init__(self,dataTT,outputDir=None,showfig=True,nrows=12):
+    def __init__(self,dataTT,outputDir=None,filename=None,showfig=True,nrows=12):
         self.dataTT = dataTT
         self.nSpikes = 0
         self.clustersList = []
         self.nClusters = 0
         self.spikesEachCluster = [] # Bool
         #self.fig = plt.figure(fignum)
-        self.fig = plt.gcf()
+        self.fig = None
         self.nRows = nrows
         self.set_parameters() # From dataTT
         self.nPages = 0
         
-        self.plot_report(showfig)
+        self.plot_report(showfig=showfig)
         if outputDir is not None:
-            self.save_report(outputDir)
+            self.save_report(outputDir,filename)
     def set_parameters(self):
         self.nSpikes = len(self.dataTT.timestamps)
         self.clustersList = np.unique(self.dataTT.clusters)
@@ -258,7 +271,9 @@ class ClusterReportFromData(object):
         for indc,clusterID in enumerate(self.clustersList):
             self.spikesEachCluster[indc,:] = (self.dataTT.clusters==clusterID)
     def plot_report(self,showfig=False):
+        print 'Plotting report...'
         #plt.figure(self.fig)
+        self.fig = plt.gcf()
         self.fig.clf()
         self.fig.set_facecolor('w')
         nCols = 3
@@ -266,6 +281,9 @@ class ClusterReportFromData(object):
         #for indc,clusterID in enumerate(self.clustersList[:2]):
         for indc,clusterID in enumerate(self.clustersList):
             #print('Preparing cluster %d'%clusterID)
+            if (indc+1)>self.nRows:
+                print 'WARNING! This cluster was ignore (more clusters than rows)'
+                continue
             tsThisCluster = self.dataTT.timestamps[self.spikesEachCluster[indc,:]]
             wavesThisCluster = self.dataTT.samples[:,:,self.spikesEachCluster[indc,:]]
             # -- Plot ISI histogram --
@@ -297,6 +315,10 @@ class ClusterReportFromData(object):
     def get_default_filename(self,figformat):
         return 'clusterReport.%s'%(figformat)
     def save_report(self,outputdir,filename=None,figformat=None):
+        # -- Create output directory --
+        if not os.path.exists(outputdir):
+            print 'Creating clusters directory: %s'%(outputdir)
+            os.makedirs(outputdir)
         self.fig.set_size_inches((8.5,11))
         if figformat is None:
             figformat = 'png' #'png' #'pdf' #'svg'

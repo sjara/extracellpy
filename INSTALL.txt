@@ -19,6 +19,10 @@
   http://ipython.org/
 
 
+* DOWNLOADING THE PACKAGE:
+  git clone git://github.com/sjara/extracellpy.git
+
+
 * UBUNTU LINUX INSTALLATION:
 - Install Python, numpy and matplotlib.
 - Download and place 'extracellpy' in a directory of choice,
@@ -62,21 +66,31 @@ sudo /usr/bin/easy_install numexpr
 sudo /usr/bin/easy_install cython
 - Install HDF5:
 http://www.hdfgroup.org/HDF5/release/obtain5.html
-
 sudo /usr/bin/easy_install tables
 
 
-* COMPILING MODULE FOR LOADING DATA:
-  It requires Cython 0.14
+* AFTER INSTALLING (all platforms):
+- Make a copy of settings_EXAMPLE.py and name it settings.py
+- Modify all relevant parameters in settings.py
 
-= ON LINUX:
+
+* COMPILING MODULE FOR LOADING DATA:
+  It requires Cython >0.14 which, if not in a package, can be installed with:
+  sudo easy_install cython
+
+= ON LINUX (32bit):
   cd ~/src/extracellpy/cLoadNeuralynx/
   make
 - Or the individual steps:
   gcc -c -O2 -Wall loadNeuralynx.c
   python setup.py build_ext --inplace
-- This should create cLoadNeuralynx.pyx which should be copied to the
+- This should create cLoadNeuralynx.so which should be copied to the
   'extracellpy' directory.
+
+= ON LINUX (64bit):
+- The first step must include the flag '-fPIC'
+  gcc -c -O2 -Wall -fPIC loadNeuralynx.c
+  python setup.py build_ext --inplace
 
 = ON WINDOWS:
 - You can use mingw32 (included in pythonxy) as compiler:
