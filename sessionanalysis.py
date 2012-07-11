@@ -481,7 +481,11 @@ def save_data_each_cell(cellDB,outputDir,timeRange=np.array([-0.3,0.9]),lockTo=1
         #cellStr = '%s_%s_T%dc%d'%(onecell.animalName, onecell.ephysSession,
         #                          onecell.tetrode, onecell.cluster)
         cellStr = str(onecell).replace(' ','_')
-        (behavData,trialEvents,dataTT,spikeInds) = load_cell_reversal(onecell)
+        try:
+            (behavData,trialEvents,dataTT,spikeInds) = load_cell_reversal(onecell)
+        except IOError:
+            print 'WARNING: File not found for cell %s'%cellStr
+            continue
         (eventOfInterest,xLabelStr) = align_to_event(behavData,lockTo)
         # -- Ignore trialsToExclude --
         eventOfInterest[onecell.trialsToExclude] = np.nan

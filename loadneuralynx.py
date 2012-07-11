@@ -7,6 +7,7 @@ It depends on Cython implementations from the cLoadNeuralynx module.
 
 import numpy as np
 import re
+import os
 import cLoadNeuralynx
 
 __author__ = 'Santiago Jaramillo'
@@ -122,6 +123,8 @@ class DataTetrode(cLoadNeuralynx.DataTetrode):
     '''Access to Neuralynx NTT files containing tetrode data.
     Reading the data is implemented by the parent class from cLoadNeuralynx.'''
     def __init__(self,fileName,readWaves=False):
+        if not os.path.exists(fileName):
+            raise IOError('No such file or directory: %s'%fileName)
         cLoadNeuralynx.DataTetrode.__init__(self,fileName,readWaves)
         self.params = {}
         self. _parse_header()

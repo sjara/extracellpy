@@ -128,6 +128,8 @@ class CellDatabase(list):
         return np.array([getattr(onecell, varname) for onecell in self])
     def subset(self,indexes):
         subsetDB = CellDatabase()
+        if isinstance(indexes,np.ndarray) and indexes.dtype==bool:
+            indexes = np.flatnonzero(indexes)
         for ind in indexes:
             subsetDB.append(self[ind])
         return subsetDB

@@ -89,7 +89,7 @@ def save_freqtuning_plots(animalName,copytogether=True):
     for indmu,onemu in enumerate(allMU.muDB):
         titleString = '%s [%s] T%d'%(onemu.animalName,onemu.ephysSession,onemu.tetrode)
         (spikeTimesFromEventOnset,trialIndexForEachSpike,
-            freqEachTrial,timeRange) = frequencytuning.estimate_frequency_tuning(onemu)
+            freqEachTrial,timeRange) = frequencytuning.align_data(onemu)
         print titleString,
         frequencytuning.plot_frequency_tuning_raster(spikeTimesFromEventOnset,
                                                      trialIndexForEachSpike,
@@ -179,7 +179,7 @@ def load_summary_spike_shape(animalsNames):
     return (spikeshapeData,cellDB)
     
         
-def save_raster_data(animalName,lockedTo=None):
+def save_raster_data(animalName,lockedTo='SoundOn'):
     '''
     Save spike times aligned to a task event.
     Data directories are defined in .../extracellpy/settings.py
@@ -189,8 +189,8 @@ def save_raster_data(animalName,lockedTo=None):
     Parameters
     ----------
     animalName: string. Name of animal.For example 'saja000'
-    lockedTo  : string. Either 'SoundOn', 'Cout' or 'SideIn'
-                If empty, all of them are evaluated.
+    lockedTo  : string or array of strings. Either 'SoundOn', 'Cout' or 'SideIn'
+                ['SoundOn', 'Cout', 'SideIn']
     '''
     # -- Load list of cells --
     sys.path.append(settings.CELL_LIST_PATH)
@@ -201,8 +201,8 @@ def save_raster_data(animalName,lockedTo=None):
     # -- Define events to lock data to --
     if isinstance(lockedTo,str):
         lockedTo = [lockedTo]
-    elif lockedTo is None:
-        lockedTo = ['SoundOn', 'Cout', 'SideIn']
+    #elif lockedTo is None:
+    #    lockedTo = ['SoundOn', 'Cout', 'SideIn']
     # -- Save results for each event type --
     for oneLock in lockedTo:
         outputDir = os.path.join(outputPath,'lockedTo%s'%(oneLock))
@@ -390,6 +390,9 @@ def save_zscores_response(animalName,lockedTo='SoundOn'):
     for indcell,onecell in enumerate(allcells.cellDB):
         cellStr = str(onecell).replace(' ','_')
         fileName = os.path.join(dataDir,cellStr+'_'+lockedTo+'.npz')
+        if not os.path.exists(fileName):
+            print 'File does not exist: %s'%fileName
+            continue
         ephysData = np.load(fileName)
         spikeTimesFromEventOnset = ephysData['spikeTimesFromEventOnset']
         indexLimitsEachTrial = ephysData['indexLimitsEachTrial']
@@ -447,7 +450,8 @@ def plot_zscores_response(animalName,lockedTo='SoundOn'):
         rangeStart = zScoreData['rangeStart']
         #cellInfo = zScoreData['cellInfo']
         colorEachCond = zScoreData['colorEachCond']
-        nCond = zStats.shape[1]
+        ###nCond = zStats.shape[1]
+        nCond = 4 ### HARCODED
 
         for indc in range(nCond):
             thisColor = colorEachCond[indc]
@@ -550,17 +554,20 @@ def save_summary_responsiveness(animalsNames,zThreshold=3):
              responsiveLowFreq=responsiveLowFreq,responsiveMidFreq=responsiveMidFreq,
              responsiveHighFreq=responsiveHighFreq,responsiveMidFreqCombined=responsiveMidFreqCombined)
 
-def print_summary_responsiveness(animalName):
+def print_summary_responsiveness(animalsNames):
     '''
     Print summary of responses.
     '''
     lockedTo = 'SoundOn'
     
-    dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
-    dataDir = os.path.join(dataPath,'zscores_response_%s'%lockedTo)
-    outputFileName = os.path.join(dataDir,'zscore_resp_All_%s_%s.npz'%(animalName,lockedTo))
+    ###dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
+    ###dataDir = os.path.join(dataPath,'zscores_response_%s'%lockedTo)
+    ####outputFileName = os.path.join(dataDir,'zscore_resp_All_%s_%s.npz'%(animalName,lockedTo))
+    strAllAnimals = '-'.join(animalsNames)
+    dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    respFileName = os.path.join(dataDir,'summary_resp_%s_%s.npz'%(strAllAnimals,'SoundOn'))
 
-    rdata = np.load(outputFileName)
+    rdata = np.load(respFileName)
     print 'Cells that respond to each freq (|z|>3) out of %d:'%len(rdata['responsiveLowFreq'])
     print 'Low freq: %0.1f%%'%(100*np.mean(rdata['responsiveLowFreq']))
     print 'Mid freq: %0.1f%%'%(100*np.mean(rdata['responsiveMidFreq']))
@@ -574,6 +581,46 @@ def print_summary_responsiveness(animalName):
     reload(allcells)
     '''
 
+def show_heatmap_response(animalsNames,showall=False):
+    '''See also test104_heatmap_manycells.py '''
+
+    respRange = [0,0.1]
+    maxColor = 12
+    fontsize = 16
+
+    strAllAnimals = '-'.join(animalsNames)
+    dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    respFileName = os.path.join(dataDir,'summary_resp_%s_%s.npz'%(strAllAnimals,'SoundOn'))
+    rdata = np.load(respFileName)
+
+    soundResponsive = rdata['responsiveMidFreq']
+    midFreqInd = 4 # 1 or 2
+    if showall:
+        zscores = rdata['zStatsEachCell'][:,midFreqInd,:]
+    else:
+        zscores = rdata['zStatsEachCell'][:,midFreqInd,soundResponsive]
+
+    respSamples = (rdata['rangeStart']>=respRange[0]) & (rdata['rangeStart']<=respRange[-1])
+
+    valToSort = np.argmax(abs(zscores[respSamples,:]),axis=0)  # Max of abs()
+    #valToSort = ### nonzero(abs(zscores[respSamples,:])>2) # First with abs(z)>3
+    #valToSort = np.argmax(diff(zscores[respSamples,:]),axis=0)  # Max of diff
+    maxVals = zscores[respSamples,:][valToSort,range(len(valToSort))]
+
+    sortedCells = np.argsort(maxVals)[::-1]  # Just sort by max z-score
+
+    plt.clf()
+    plt.imshow(zscores[:,sortedCells].T, vmin=-maxColor,vmax=maxColor)
+    plt.xticks(np.arange(32)[::4],np.round(1e3*rdata['rangeStart'][::4]).astype(int))
+    plt.xlabel('Time from sound onset (ms)',fontsize=fontsize)
+    plt.ylabel('cells (sorted by response magnitude)',fontsize=fontsize)
+    cbar = plt.colorbar()
+    cbar.set_label('z-score',fontsize=fontsize)
+    plt.draw()
+    plt.show()
+
+
+    
 def save_zscores_modulation(animalName,lockedTo='SoundOn'):
     '''
     Calculate z-scores between midFreq-Right and midFreq-Left
@@ -635,8 +682,10 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
 
         # -- Find modulation for all blocks merged --
         eachCondLabel = ['LowBoundBlock','HighBoundBlock']
-        #validMidFreq = trialsMidFreq & ~behavData.early
-        validMidFreq = trialsMidFreqCorrect & ~behavData.early ### Only correct trials
+        
+        validMidFreq = trialsMidFreq & ~behavData.early ### Both correct and incorrect trials
+        #validMidFreq = trialsMidFreqCorrect & ~behavData.early ### Only correct trials
+
         validMidFreq[onecell.trialsToExclude] = False
         validEachCond = np.c_[behavData.lowFreqs,behavData.highFreqs]
         validMidFreqEachCond = validEachCond & validMidFreq[:,np.newaxis]
@@ -898,7 +947,7 @@ def plot_summary_modulation_TEMP(animalsNames,lockedTo='SoundOn',nBins = 32):
         respRange = [0,0.15]
         respSamples = (rdata['rangeStart']>=respRange[0]) & (rdata['rangeStart']<=respRange[-1])
 
-        ######### WARNING!!! selecting response for midFreq lowBound blocks ###########
+        # -- Select responsiveness from merged blocks --
         zscores = rdata['zStatsEachCell'][:,4,:]
         
         #maxInd = np.argmax(abs(zscores[respSamples,:]),axis=0)

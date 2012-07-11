@@ -87,7 +87,10 @@ class TetrodeToCluster(object):
         if self.dataTT is None:
             self.load_waveforms()
         self.dataTT.set_clusters(os.path.join(self.clustersDir,'TT%d.clu.1'%self.tetrode))
-        self.report = ClusterReportFromData(self.dataTT,outputDir=self.reportDir,filename=self.reportFileName,showfig=False)
+        figTitle = self.dataDir+' (T%d)'%self.tetrode
+        self.report = ClusterReportFromData(self.dataTT,outputDir=self.reportDir,
+                                            filename=self.reportFileName,figtitle=figTitle,
+                                            showfig=False)
         
 
 
@@ -243,7 +246,7 @@ class ClusterReportFromData(object):
     '''
     Need to finish reports when more than nrows<clusters.
     '''
-    def __init__(self,dataTT,outputDir=None,filename=None,showfig=True,nrows=12):
+    def __init__(self,dataTT,outputDir=None,filename=None,showfig=True,figtitle='',nrows=12):
         self.dataTT = dataTT
         self.nSpikes = 0
         self.clustersList = []
@@ -254,6 +257,7 @@ class ClusterReportFromData(object):
         self.nRows = nrows
         self.set_parameters() # From dataTT
         self.nPages = 0
+        self.figTitle = figtitle
         
         self.plot_report(showfig=showfig)
         if outputDir is not None:
@@ -305,8 +309,8 @@ class ClusterReportFromData(object):
             # -- Plot waveforms --
             plt.subplot(self.nRows,nCols,indc*nCols+2)
             plot_waveforms(wavesThisCluster)
-        figTitle = self.get_title()
-        plt.figtext(0.5,0.92, figTitle,ha='center',fontweight='bold',fontsize=10)
+        #figTitle = self.get_title()
+        plt.figtext(0.5,0.92, self.figTitle,ha='center',fontweight='bold',fontsize=10)
         if showfig:
             #plt.draw()
             plt.show()
@@ -344,6 +348,7 @@ class ClusterReportTetrode(ClusterReportFromData):
         self.load_data()
         super(ClusterReportTetrode, self).__init__(self.dataTT,outputDir=outputDir,
                                                    showfig=showfig,nrows=nrows)
+        self.figTitle = self.dataDir+' (T%d)'%self.tetrode  #tetrodeFile
     def load_data(self):
         self.dataDir = os.path.join(settings.EPHYS_PATH,'%s/%s/'%(self.animalName,self.ephysSession))
         clustersDir = os.path.join(settings.EPHYS_PATH,'%s/%s_kk/'%(self.animalName,self.ephysSession))
@@ -357,8 +362,8 @@ class ClusterReportTetrode(ClusterReportFromData):
         self.clustersFile = os.path.join(clustersDir,'TT%d.clu.1'%self.tetrode)
         dataTT.set_clusters(self.clustersFile)
         self.dataTT = dataTT
-    def get_title(self):
-        return self.dataDir+' (T%d)'%self.tetrode  #tetrodeFile
+        #def get_title(self):
+        #return self.dataDir+' (T%d)'%self.tetrode  #tetrodeFile
     def __str__(self):
         return '%s  %s  T%d\n%d clusters'%(self.animalName,self.ephysSession,self.tetrode,self.nClusters)
     def get_default_filename(self,figformat):

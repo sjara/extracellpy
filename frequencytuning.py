@@ -8,6 +8,7 @@ from extracellpy import loadneuralynx
 reload(loadneuralynx) # Force reload
 from extracellpy import loadbehavior
 from extracellpy import spikesanalysis
+from extracellpy import extrafuncs
 import os, sys
 import numpy as np
 import matplotlib.pyplot as plt
@@ -66,7 +67,7 @@ def plot_frequency_tuning_raster(spikeTimesFromEventOnset,trialIndexForEachSpike
 
 
 
-def estimate_frequency_tuning(onemu):
+def align_data(onemu):
     rasterDeltaT = 0.1e-3            # sec
     timeRange = np.array([-0.2,0.6])
     animalName = onemu.animalName
@@ -94,6 +95,8 @@ def estimate_frequency_tuning(onemu):
     behavData.extract_event_times()
     behavData.align_to_ephys(trialStartTimeNL)
 
+    # FIXME: add line to check that number of trials of ephys & behavior are consistent
+    
     # -- Check is alignment ephys/behavior is correct --
     #behavData.check_clock_drift()
     #waitforbuttonpress()
@@ -124,10 +127,8 @@ def estimate_frequency_tuning(onemu):
 
     # -- Load clusters if required --
     #if (clustersEachTetrode is not None) and clustersEachTetrode.has_key(tetrode):
-
     
     ########## BUG: clustersEachTetrode is not defined anywhere !!! #############
-
     
     if len(clusters)>0:
         clustersFile = os.path.join(clustersDir,'TT%d.clu.1'%tetrode)
@@ -139,16 +140,59 @@ def estimate_frequency_tuning(onemu):
         (spikeTimesFromEventOnset,trialIndexForEachSpike,indexLimitsEachTrial) = \
           spikesanalysis.eventlocked_spiketimes(dataTT.timestamps,eventOfInterest,timeRange)
     
-    return (spikeTimesFromEventOnset,trialIndexForEachSpike,freqEachTrial,timeRange)
-    
+    return (spikeTimesFromEventOnset,trialIndexForEachSpike,indexLimitsEachTrial,freqEachTrial,timeRange)
 
+def find_trials_each_freq(freqEachTrial):
+    possibleFreq = np.unique(freqEachTrial)
+    trialsEachFreq = []
+    for indf,freq in enumerate(possibleFreq):
+        trialsEachFreq.append(np.flatnonzero(freqEachTrial==freq))
+    return (possibleFreq,trialsEachFreq)
+
+def estimate_frequency_tuning(spikeTimesFromEventOnset,indexLimitsEachTrial,freqEachTrial):
+    responseRange = np.array([0,0.150])
+    baselineRange = responseRange-0.200
+    (possibleFreq,trialsEachFreq) = find_trials_each_freq(freqEachTrial)
+    meanRespEachFreq = np.empty(len(possibleFreq))
+    semRespEachFreq = np.empty(len(possibleFreq))
+    # -- Response --
+    for indf,freq in enumerate(possibleFreq):
+        theseTrials = trialsEachFreq[indf]
+        nSpikes=spikesanalysis.count_spikes_in_range(spikeTimesFromEventOnset,
+                                                     indexLimitsEachTrial[:,theseTrials],
+                                                     responseRange)
+        spikesPerSec = nSpikes/np.diff(responseRange)
+        meanRespEachFreq[indf] = np.mean(spikesPerSec)
+        semRespEachFreq[indf] = np.std(spikesPerSec)/np.sqrt(len(theseTrials))
+    # -- Baseline --
+    nSpikesBaseline=spikesanalysis.count_spikes_in_range(spikeTimesFromEventOnset,
+                                                         indexLimitsEachTrial,
+                                                         baselineRange)
+    spikesPerSecBaseline = nSpikesBaseline/np.diff(baselineRange)
+    meanBaseline = np.mean(spikesPerSecBaseline)
+    semBaseline = np.mean(spikesPerSecBaseline)
+    return (possibleFreq,meanRespEachFreq,semRespEachFreq,meanBaseline,semBaseline)
+
+def plot_frequency_tuning(possibleFreq,meanRespEachFreq,semRespEachFreq=None,
+                          meanBaseline=None,semBaseline=None):
+    pcolor='k'
+    plt.clf()
+    plt.plot(np.log10(possibleFreq),meanRespEachFreq,'o-',ms=5,mew=2,mec=pcolor,mfc='w',color=pcolor)
+    if meanBaseline is not None:
+        plt.axhline(meanBaseline,ls='--',color='k')
+    plt.draw()
+    plt.show()
+    
 if __name__ == "__main__":
+    '''
     animalName = 'saja125'
     # -- Load list of cells --
     sys.path.append(settings.CELL_LIST_PATH)
     dataModule = 'alltuning_%s'%(animalName)
     allMU = __import__(dataModule)
     reload(allMU)
+    muDB = allMU.muDB
+    '''
     '''
     animalName   = 'saja125'
     ephysSession = '2012-01-30_14-31-32'
@@ -156,25 +200,44 @@ if __name__ == "__main__":
     tetrodes = [2]
     clustersEachTetrode = None
     '''
+    from extracellpy import celldatabase
+    reload(celldatabase)
+
+    muDB = celldatabase.MultiUnitDatabase()
+    animalName   = 'saja100'
+    ephysSession = '2011-11-27_14-33-15'
+    behavSession = '20111127a'
+    #clustersEachTetrode = {7:range(2,14)}
+    clustersEachTetrode = {7:[13]}
+    for tetrode,clusters in sorted(clustersEachTetrode.items()):
+        oneCell = celldatabase.MultiUnitInfo(animalName = animalName,
+                                             ephysSession = ephysSession,
+                                             behavSession = behavSession,
+                                             tetrode = tetrode,
+                                             clusters = clusters)
+        muDB.append(oneCell)
 
     outputPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
     outputDir = os.path.join(outputPath,'freqtuning')
 
-    for indmu,onemu in enumerate(allMU.muDB):
-        #muStr = '%s_%s_T%dmu'%(onemu.animalName, onemu.ephysSession,onemu.tetrode)
-        titleString = '%s [%s] T%d'%(onemu.animalName,onemu.ephysSession,onemu.tetrode)
-        (spikeTimesFromEventOnset,trialIndexForEachSpike,
-            freqEachTrial,timeRange) = estimate_frequency_tuning(onemu)
+    CASE = 2
+    if CASE==1:
 
-        print titleString,
-        plot_frequency_tuning_raster(spikeTimesFromEventOnset,trialIndexForEachSpike,
-                                     freqEachTrial,timeRange)
+        for indmu,onemu in enumerate(muDB):
+            #muStr = '%s_%s_T%dmu'%(onemu.animalName, onemu.ephysSession,onemu.tetrode)
+            titleString = '%s [%s] T%d'%(onemu.animalName,onemu.ephysSession,onemu.tetrode)
+            (spikeTimesFromEventOnset,trialIndexForEachSpike,indexLimitsEachTrial,
+                freqEachTrial,timeRange) = align_data(onemu)
 
-        import matplotlib.pyplot as plt
-        plt.title(titleString,fontsize=FONTSIZE-2)
-        plt.draw()
-        plt.show()
-        plt.waitforbuttonpress()
+            print titleString,
+            plot_frequency_tuning_raster(spikeTimesFromEventOnset,trialIndexForEachSpike,
+                                         freqEachTrial,timeRange)
+
+            import matplotlib.pyplot as plt
+            plt.title(titleString,fontsize=FONTSIZE-2)
+            plt.draw()
+            plt.show()
+            #plt.waitforbuttonpress()
         
         '''
         plt.gcf().set_size_inches((8,6))
@@ -184,3 +247,12 @@ if __name__ == "__main__":
         plt.savefig(os.path.join('/tmp/',figName),format=figFormat)
         print '... figure saved.'
         '''
+
+    elif CASE==2:
+        onemu = muDB[0]
+        (spikeTimesFromEventOnset,trialIndexForEachSpike,indexLimitsEachTrial,
+           freqEachTrial,timeRange) = align_data(onemu)
+        (possibleFreq,meanRespEachFreq,semRespEachFreq,meanBaseline,semBaseline) = \
+          estimate_frequency_tuning(spikeTimesFromEventOnset,
+                                    indexLimitsEachTrial,freqEachTrial)
+        plot_frequency_tuning(possibleFreq,meanRespEachFreq,meanBaseline=meanBaseline)
