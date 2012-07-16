@@ -67,8 +67,8 @@ class TetrodeToCluster(object):
         Subset = np.floor(self.dataTT.nEvents/min(self.dataTT.nEvents,maxNumberOfEventsToUse))
         MaxPossibleClusters = 12
         UseFeatures = (self.nFeatures*N_CHANNELS)*'1'
-        KKparamsFormat = '-Subset %d -MinClusters 10 -MaxClusters 24 -MaxPossibleClusters %d -UseFeatures %s';
-        KKparams = KKparamsFormat%(Subset,MaxPossibleClusters,UseFeatures)
+        KKparamsFormat = '-Subset %d -MinClusters 10 -MaxClusters %d -MaxPossibleClusters %d -UseFeatures %s';
+        KKparams = KKparamsFormat%(Subset,MaxPossibleClusters,MaxPossibleClusters,UseFeatures)
         KKtetrode = 'TT%s'%(self.tetrode)
         KKsuffix = '1'
         KKpath = settings.KK_PATH
