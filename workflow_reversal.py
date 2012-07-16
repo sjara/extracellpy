@@ -217,19 +217,23 @@ def save_raster_data(animalName,lockedTo='SoundOn'):
             #timeRange = np.array([-0.5,2]) #sec
             allcells.cellDB.save_locked_spikes(outputDir,timeRange=timeRange,lockTo=3)
 
-def save_raster_plots(animalName,groupedBy='4cond'):
+def save_raster_plots(animalName,lockedTo='SoundOn',groupedBy='4cond',cellDB=None):
     '''
     Parameters
     ----------
+    lockedTo: ['SoundOn', 'Cout', 'SideIn']
     groupedBy: string. Either '4cond','outcome'
     '''
     # -- Load list of cells --
-    sys.path.append(settings.CELL_LIST_PATH)
-    dataModule = 'allcells_%s'%(animalName)
-    allcells = __import__(dataModule)
-    reload(allcells)
-
-    for oneLock in ['SoundOn', 'Cout', 'SideIn']:
+    if not cellDB:
+        sys.path.append(settings.CELL_LIST_PATH)
+        dataModule = 'allcells_%s'%(animalName)
+        allcells = __import__(dataModule)
+        reload(allcells)
+        cellDB = allcells.cellDB
+    if isinstance(lockedTo,str):
+        lockedTo = [lockedTo]
+    for oneLock in lockedTo:
         dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
         dataDir = os.path.join(dataPath,'lockedTo%s'%(oneLock))
         outputDir = os.path.join(dataPath,'rasters_lockedTo%s_%s'%(oneLock,groupedBy))
@@ -239,7 +243,7 @@ def save_raster_plots(animalName,groupedBy='4cond'):
             os.makedirs(outputDir)
 
         prevSession = ''
-        for indcell,onecell in enumerate(allcells.cellDB):
+        for indcell,onecell in enumerate(cellDB):
             cellStr = str(onecell).replace(' ','_')
             fileName = os.path.join(dataDir,cellStr+'_'+oneLock+'.npz')
             # -- Load data saved by save_raster_data() --
