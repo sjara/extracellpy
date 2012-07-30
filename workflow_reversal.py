@@ -614,7 +614,7 @@ def show_heatmap_response(animalsNames,showall=False):
     sortedCells = np.argsort(maxVals)[::-1]  # Just sort by max z-score
 
     plt.clf()
-    plt.imshow(zscores[:,sortedCells].T, vmin=-maxColor,vmax=maxColor)
+    plt.imshow(zscores[:,sortedCells].T, vmin=-maxColor,vmax=maxColor,interpolation='nearest')
     plt.xticks(np.arange(32)[::4],np.round(1e3*rdata['rangeStart'][::4]).astype(int))
     plt.xlabel('Time from sound onset (ms)',fontsize=fontsize)
     plt.ylabel('cells (sorted by response magnitude)',fontsize=fontsize)
