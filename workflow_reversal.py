@@ -585,6 +585,15 @@ def print_summary_responsiveness(animalsNames):
     reload(allcells)
     '''
 
+def list_responsive(animalsNames,freq='mid'):
+    strAllAnimals = '-'.join(animalsNames)
+    dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    respFileName = os.path.join(dataDir,'summary_resp_%s_%s.npz'%(strAllAnimals,'SoundOn'))
+    rdata = np.load(respFileName)
+    soundResponsive = rdata['responsiveMidFreq']
+    for cellstr in rdata['strEachCell'][soundResponsive]:
+        print cellstr
+    
 def show_heatmap_response(animalsNames,showall=False):
     '''See also test104_heatmap_manycells.py '''
 
