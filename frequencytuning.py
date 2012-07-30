@@ -149,8 +149,11 @@ def find_trials_each_freq(freqEachTrial):
         trialsEachFreq.append(np.flatnonzero(freqEachTrial==freq))
     return (possibleFreq,trialsEachFreq)
 
-def estimate_frequency_tuning(spikeTimesFromEventOnset,indexLimitsEachTrial,freqEachTrial):
-    responseRange = np.array([0,0.150])
+def estimate_frequency_tuning(spikeTimesFromEventOnset,indexLimitsEachTrial,freqEachTrial,responseRange=None):
+    if responseRange is None:
+        responseRange = np.array([0,0.150])
+    else:
+        responseRange = np.array(responseRange)
     baselineRange = responseRange-0.200
     (possibleFreq,trialsEachFreq) = find_trials_each_freq(freqEachTrial)
     meanRespEachFreq = np.empty(len(possibleFreq))
@@ -205,10 +208,13 @@ if __name__ == "__main__":
 
     muDB = celldatabase.MultiUnitDatabase()
     animalName   = 'saja100'
-    ephysSession = '2011-11-27_14-33-15'
-    behavSession = '20111127a'
+    #ephysSession = '2011-11-27_14-33-15'; behavSession = '20111127a'
+    #clustersEachTetrode = {7:[13]}
     #clustersEachTetrode = {7:range(2,14)}
-    clustersEachTetrode = {7:[13]}
+    ephysSession = '2011-12-05_16-35-53'; behavSession = '20111205a'
+    clustersEachTetrode = {8:range(2,30)}
+    #clustersEachTetrode = {8:[3]}
+    
     for tetrode,clusters in sorted(clustersEachTetrode.items()):
         oneCell = celldatabase.MultiUnitInfo(animalName = animalName,
                                              ephysSession = ephysSession,
@@ -249,10 +255,17 @@ if __name__ == "__main__":
         '''
 
     elif CASE==2:
+        #rRange=[0,0.025]
+        rRange=[0.025,0.150]
+        #rRange=[0,0.150]
         onemu = muDB[0]
         (spikeTimesFromEventOnset,trialIndexForEachSpike,indexLimitsEachTrial,
            freqEachTrial,timeRange) = align_data(onemu)
         (possibleFreq,meanRespEachFreq,semRespEachFreq,meanBaseline,semBaseline) = \
           estimate_frequency_tuning(spikeTimesFromEventOnset,
-                                    indexLimitsEachTrial,freqEachTrial)
+                                    indexLimitsEachTrial,freqEachTrial,
+                                    responseRange=rRange)
+        plt.figure(1)
+        plot_frequency_tuning_raster(spikeTimesFromEventOnset,trialIndexForEachSpike,freqEachTrial,timeRange)
+        plt.figure(2)
         plot_frequency_tuning(possibleFreq,meanRespEachFreq,meanBaseline=meanBaseline)

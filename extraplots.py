@@ -223,7 +223,7 @@ THE FOLLOWING CODE NEEDS trialIndexForEachSpike AS PARAMETER.
 '''
 
 
-def plot_index_histogram(val1,val2,pValue,nBins=14,fontSize=12):
+def plot_index_histogram(val1,val2,pValue,nBins=14,fontsize=12):
     '''
     returns (allbars,signifbars)
     where allbars is (y,x,patches)
@@ -247,16 +247,16 @@ def plot_index_histogram(val1,val2,pValue,nBins=14,fontSize=12):
     yLims = mpl.ylim()
     mpl.plot([0,0],[0,yLims[1]],color='k',linestyle=':',zorder=-1)
     mpl.hold(False)
-    mpl.xlabel('Index: (x1-x2)/(x1+x2)',fontsize=fontSize)
-    mpl.ylabel('Number of cells',fontsize=fontSize)
-    mpl.setp(ax.get_xticklabels(),fontsize=fontSize-2)
-    mpl.setp(ax.get_yticklabels(),fontsize=fontSize-2)
+    mpl.xlabel('Index: (x1-x2)/(x1+x2)',fontsize=fontsize)
+    mpl.ylabel('Number of cells',fontsize=fontsize)
+    mpl.setp(ax.get_xticklabels(),fontsize=fontsize-2)
+    mpl.setp(ax.get_yticklabels(),fontsize=fontsize-2)
     ax.set_yticks(range(0,yLims[1]+1,10))
     mpl.draw()
     mpl.show()
     return(allbars,signifbars)
 
-def plot_scatter(val1,val2,pValue,axlims=None,fontSize=12):
+def plot_scatter(val1,val2,pValue,axlims=None,fontsize=12):
     if axlims is None:
         maxRate = np.nanmax([val1,val2])
         minRate = np.nanmin([val1,val2])
@@ -279,7 +279,7 @@ def plot_scatter(val1,val2,pValue,axlims=None,fontSize=12):
     mpl.draw()
     mpl.show()
 
-def plot_scatter_groups(data,pValue,color='None',axlims=None,fontSize=12):
+def plot_scatter_groups(data,pValue,color='None',axlims=None,fontsize=12):
     '''
     data: list of M arrays of dimension Nx2
     pValue: list of M arrays of pvalues
