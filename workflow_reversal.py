@@ -1079,8 +1079,10 @@ def plot_summary_modulation_grouped(animalsNames,lockedTo='SoundOn',nBins = 16):
     (tstatw,pval) = stats.wilcoxon(dataToPlot[:,0],dataToPlot[:,1]) # paired test
     print 'p-value (POS & -NEG)= %0.4f'%pval
 
-    cellDBmodPos = cellDB.subset(selectedCellsPos & mdata['consistentMod'])
-    cellDBmodNeg = cellDB.subset(selectedCellsNeg & mdata['consistentMod'])
+    ###cellDBmodPos = cellDB.subset(selectedCellsPos & mdata['consistentMod'])
+    ###cellDBmodNeg = cellDB.subset(selectedCellsNeg & mdata['consistentMod'])
+    cellDBmodPos = cellDB.subset(pValToPlotPos<0.05)
+    cellDBmodNeg = cellDB.subset(pValToPlotNeg<0.05)
     return (cellDBmodPos,cellDBmodNeg)
 
     
