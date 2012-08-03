@@ -532,13 +532,15 @@ def save_summary_responsiveness(animalsNames,zThreshold=3):
         # -- Open file manually. Workaround for bug in numpy --
         fileObj = open(fileName,'rb')
         zScoreData = np.load(fileObj)
-        zStatsEachCell[:,:,indcell] = zScoreData['zStats']
+        zStatsEachCell[:,:,indcell] = zScoreData['zStats'].copy()
+        if indcell==0:
+            rangeStart = zScoreData['rangeStart']
+            colorEachCond = zScoreData['colorEachCond']
+            baseRange=zScoreData['baseRange']
+            trialsEachCondLabels=zScoreData['trialsEachCondLabels']
         fileObj.close()
         strEachCell.append(cellStr)
     print 'done!'
-    rangeStart = zScoreData['rangeStart']
-    colorEachCond = zScoreData['colorEachCond']
-
     rangesOfInterest = (rangeStart>=rangeToEvaluate[0])&(rangeStart<rangeToEvaluate[-1])
 
     responsiveLowFreq = (np.sum(zStatsEachCell[rangesOfInterest,0,:]>zThreshold,axis=0)>0) | \
@@ -561,8 +563,8 @@ def save_summary_responsiveness(animalsNames,zThreshold=3):
     print 'Saving summary to %s'%outputFileName
     np.savez(outputFileName,zStatsEachCell=zStatsEachCell,zThreshold=zThreshold,
              rangesOfInterest=rangesOfInterest,strEachCell=strEachCell,
-             rangeStart=zScoreData['rangeStart'],baseRange=zScoreData['baseRange'],
-             trialsEachCondLabels=zScoreData['trialsEachCondLabels'],
+             rangeStart=rangeStart,baseRange=baseRange,
+             trialsEachCondLabels=trialsEachCondLabels,
              responsiveLowFreq=responsiveLowFreq,responsiveMidFreq=responsiveMidFreq,
              responsiveHighFreq=responsiveHighFreq,responsiveMidFreqCombined=responsiveMidFreqCombined)
 
