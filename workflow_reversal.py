@@ -518,14 +518,22 @@ def save_summary_responsiveness(animalsNames,zThreshold=3):
     zStatsEachCell = np.empty((nBins,nCond,nCells))
     strEachCell = []
 
+    # NOTE: there is a bug in numpy that gives the error "Too many files open"
+    #       when looping opening npz files. That is why files are open and closed
+    #       manually.
+    #       http://projects.scipy.org/numpy/attachment/ticket/1517/numpy_bug.py
     print 'Loading all zscores... ',
     for indcell,onecell in enumerate(cellDB):
         dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
         dataDir = os.path.join(dataPath,'zscores_response_%s'%lockedTo)
         cellStr = str(onecell).replace(' ','_')
         fileName = os.path.join(dataDir,'zscore_resp_'+cellStr+'_'+lockedTo+'.npz')
-        zScoreData = np.load(fileName)
+        #zScoreData = np.load(fileName)
+        # -- Open file manually. Workaround for bug in numpy --
+        fileObj = open(fileName,'rb')
+        zScoreData = numpy.load(fileObj)
         zStatsEachCell[:,:,indcell] = zScoreData['zStats']
+        fileObj.close()
         strEachCell.append(cellStr)
     print 'done!'
     rangeStart = zScoreData['rangeStart']
