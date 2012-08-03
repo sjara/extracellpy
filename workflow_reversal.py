@@ -531,7 +531,7 @@ def save_summary_responsiveness(animalsNames,zThreshold=3):
         #zScoreData = np.load(fileName)
         # -- Open file manually. Workaround for bug in numpy --
         fileObj = open(fileName,'rb')
-        zScoreData = numpy.load(fileObj)
+        zScoreData = np.load(fileObj)
         zStatsEachCell[:,:,indcell] = zScoreData['zStats']
         fileObj.close()
         strEachCell.append(cellStr)
