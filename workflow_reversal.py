@@ -397,7 +397,11 @@ def save_zscores_response(animalName,lockedTo='SoundOn'):
         if not os.path.exists(fileName):
             print 'File does not exist: %s'%fileName
             continue
-        ephysData = np.load(fileName)
+        #ephysData = np.load(fileName)
+        # -- Open file manually. Workaround for bug in numpy --
+        fileObj = open(fileName,'rb')
+        ephysData = np.load(fileObj)
+
         spikeTimesFromEventOnset = ephysData['spikeTimesFromEventOnset']
         indexLimitsEachTrial = ephysData['indexLimitsEachTrial']
 
@@ -432,7 +436,7 @@ def save_zscores_response(animalName,lockedTo='SoundOn'):
                  trialsEachCondLabels=condInfo['trialsEachCondLabels'],cellInfo=onecell,
                  colorEachCond=condInfo['colorEachCond'])
         #zStatsEachCell[:,:,indcell] = zStats
-
+        fileObj.close()
 
 def plot_zscores_response(animalName,lockedTo='SoundOn'):
     # -- Load list of cells --
@@ -689,7 +693,9 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
     for indcell,onecell in enumerate(allcells.cellDB):
         cellStr = str(onecell).replace(' ','_')
         fileName = os.path.join(dataDir,cellStr+'_'+lockedTo+'.npz')
-        ephysData = np.load(fileName)
+        #ephysData = np.load(fileName)
+        fileObj = open(fileName,'rb')
+        ephysData = np.load(fileObj)
 
         # -- Load behavior --
         if ephysData['behavSession']==prevSession:
@@ -771,8 +777,9 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
                  typeEachSwitchLabels=typeEachSwitchLabels,
                  eachCondLabel=eachCondLabel, meanRespEachCond=meanRespEachCond,
                  pValueMod=pValueMod)
+        fileObj.close()
 
-
+        
 def save_summary_modulation(animalsNames,lockedTo='SoundOn'):
     '''
     Create array with z-scores from all cells.
@@ -807,7 +814,10 @@ def save_summary_modulation(animalsNames,lockedTo='SoundOn'):
         dataDir = os.path.join(dataPath,'zscores_modulation_%s'%lockedTo)
         cellStr = str(onecell).replace(' ','_')
         fileName = os.path.join(dataDir,'zscore_mod_'+cellStr+'_'+lockedTo+'.npz')
-        zScoreData = np.load(fileName)
+        #zScoreData = np.load(fileName)
+        fileObj = open(fileName,'rb')
+        zScoreData = np.load(fileObj)
+        
         nSwitchesThisCell = len(zScoreData['pValueEachSwitch'])
         nSwitches[indcell] = nSwitchesThisCell
 
@@ -818,7 +828,10 @@ def save_summary_modulation(animalsNames,lockedTo='SoundOn'):
         strEachCell.append(cellStr)
         meanRespEachCond[indcell] = zScoreData['meanRespEachCond']
         pValueMod[indcell] = zScoreData['pValueMod']
-
+        if indcell==0:
+            typeEachSwitchLabels=zScoreData['typeEachSwitchLabels']
+            eachCondLabel=zScoreData['eachCondLabel']
+            
         # -- Evaluate if consistent change across switches --
         modDirEachCell = np.ravel(np.diff(zScoreData['meanRespEachSwitch'],axis=1)>0)
         sumModDir = np.sum(modDirEachCell)
@@ -828,7 +841,8 @@ def save_summary_modulation(animalsNames,lockedTo='SoundOn'):
             ## That is, if consistent for at least two consecutive switches ##
             consistentMod[indcell]=True
             pass
-
+        fileObj.close()
+        
     strAllAnimals = '-'.join(animalsNames)
     outputDir = settings.PROCESSED_REVERSAL_PATH%('all')
     if not os.path.exists(outputDir):
@@ -838,10 +852,10 @@ def save_summary_modulation(animalsNames,lockedTo='SoundOn'):
     print 'Saving summary to %s'%outputFileName
     np.savez(outputFileName,strEachCell=strEachCell,meanRespEachSwitch=meanRespEachSwitch,
              pValueEachSwitch=pValueEachSwitch,typeEachSwitch=typeEachSwitch,
-             typeEachSwitchLabels=zScoreData['typeEachSwitchLabels'],
+             typeEachSwitchLabels=typeEachSwitchLabels,
              cellIDeachSwitch=cellIDeachSwitch,
              nSwitches=nSwitches,
-             eachCondLabel=zScoreData['eachCondLabel'],
+             eachCondLabel=eachCondLabel,
              meanRespEachCond=meanRespEachCond,
              pValueMod=pValueMod, consistentMod=consistentMod)
     
