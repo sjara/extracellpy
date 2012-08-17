@@ -8,7 +8,7 @@ python runclustering.py saja000 2011-04-04_11-54-29 8
 
 '''
 
-from extracellpy import spikesorting
+import spikesorting
 reload(spikesorting)
 import sys
 
