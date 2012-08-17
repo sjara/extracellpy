@@ -11,6 +11,7 @@ import numpy as np
 import os
 import subprocess
 import time
+import paramiko
 
 __author__ = 'Santiago Jaramillo'
 __version__ = '0.1'
@@ -19,15 +20,42 @@ __version__ = '0.1'
 SAMPLES_PER_SPIKE = 32
 N_CHANNELS = 4
 
+
+
+#KK_PATH = '/var/misc/toolbox/KK2/KlustaKwik'
+#REMOTE_SERVER = 'zelk'
+#REMOTE_EPHYS_PATH = '/home/sjara/data'
+
 class SessionToCluster(object):
-    pass
-    '''
-    def __init__(self,animalName,ephysSession,tetrodeList):
-    for indt,tetrode in enumerate(tetrodeList):
+    '''Define session, send data to remote server, cluster remotely and get results back '''
+    def __init__(self,animalName,ephysSession,tetrodes,serverUser=None,serverName=None,serverPath=None):
+        self.animalName = animalName
+        self.ephysSession = ephysSession
+        self.tetrodes = tetrodes
+        self.serverUser = serverUser
+        self.serverName = serverName
+        self.serverPath = serverPath
+        self.localPath = os.path.join(settings.EPHYS_PATH,animalName,ephysSession)
+    def transfer_data_to_server(self):
+        destPath = '%s@%s:%s'%(self.serverUser,self.serverName,self.serverPath)
+        transferCommand = ['rsync','-a', '--progress', self.localPath, destPath]
+        print ' '.join(transferCommand)
+        subprocess.call(transferCommand)
+
+    def run_clustering_remotely(self):
+        client = paramiko.SSHClient()
+        client.load_system_host_keys()
+        client.connect(self.serverName, 22, self.serverUser)
+        client.exec_command('touch /tmp/test.paramiko.txt')
+        client.close()
+        ######## FINISH THIS #########
+    
+'''
+        for indt,tetrode in enumerate(tetrodeList):
         if isinstance(self.tetrodeList,int):
             tetrodeList = [tetrodeList]
-    '''
-    
+'''
+            
 class TetrodeToCluster(object):
     def __init__(self,animalName,ephysSession,tetrode):
         self.animalName = animalName
@@ -75,8 +103,11 @@ class TetrodeToCluster(object):
         commandToRun = '%s %s %s %s'%(KKpath,KKtetrode,KKsuffix,KKparams)
         print commandToRun
         # NOTE: redirecting to PIPE did not work. The process goes idle after 20+ sec.
-        #self.process = subprocess.Popen([KKpath,KKtetrode,KKsuffix,KKparams],stdout=subprocess.PIPE,cwd=self.clustersDir)
-        self.process = subprocess.Popen([KKpath,KKtetrode,KKsuffix,KKparams],stdout=open('/dev/null','w'),cwd=self.clustersDir)
+        ###self.process = subprocess.Popen([KKpath,KKtetrode,KKsuffix,KKparams],stdout=subprocess.PIPE,cwd=self.clustersDir)
+        #self.process = subprocess.Popen([KKpath,KKtetrode,KKsuffix,KKparams],stdout=open('/dev/null','w'),cwd=self.clustersDir)
+        returnCode = subprocess.call([KKpath,KKtetrode,KKsuffix,KKparams],cwd=self.clustersDir)
+        if returnCode:
+            print 'WARNING! clustering gave an error'
         '''
         while self.process.poll() is None:
             print 'Not yet: %f'%(time.time())
@@ -400,7 +431,7 @@ def merge_kk_clusters(animalName,ephysSession,tetrode,clustersToMerge,reportDir=
 
 
 if __name__ == "__main__":
-    CASE = 1
+    CASE = 4
     if CASE==1:
         animalName   = 'saja125'
         ephysSession = '2012-01-31_14-37-44'
@@ -419,7 +450,16 @@ if __name__ == "__main__":
         tetrode = 2
         #merge_kk_clusters(animalName,ephysSession,tetrode,[2,5],reportDir='/tmp/reports')
         #merge_kk_clusters(animalName,ephysSession,tetrode,[2,10],reportDir='/tmp/reports')
-
+    elif CASE==4:
+        '''Test SessionToCluster (which runs the whole moving data and clustering remotely '''
+        animalName   = 'saja099'
+        ephysSession = '2011-04-04_11-54-29'
+        tetrodes = [1,2]
+        thisSession = SessionToCluster(animalName,ephysSession,tetrodes,'bard',
+                                       'bard02','/home/bard/data/santiago/saja000/')
+        thisSession.transfer_data_to_server()
+        thisSession.run_clustering_remotely()
+        #thisSession.create_fet_files()
         
 '''
 animalName   = 'saja125'
