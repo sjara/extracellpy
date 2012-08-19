@@ -21,7 +21,6 @@ SAMPLES_PER_SPIKE = 32
 N_CHANNELS = 4
 
 
-
 #KK_PATH = '/var/misc/toolbox/KK2/KlustaKwik'
 #REMOTE_SERVER = 'zelk'
 #REMOTE_EPHYS_PATH = '/home/sjara/data'
@@ -36,18 +35,26 @@ class SessionToCluster(object):
         self.serverName = serverName
         self.serverPath = serverPath
         self.localPath = os.path.join(settings.EPHYS_PATH,animalName,ephysSession)
+        self.client = None
     def transfer_data_to_server(self):
-        destPath = '%s@%s:%s'%(self.serverUser,self.serverName,self.serverPath)
-        transferCommand = ['rsync','-a', '--progress', self.localPath, destPath]
+        destPath = os.path.join(self.serverPath,self.animalName)
+        remotePath = '%s@%s:%s'%(self.serverUser,self.serverName,destPath)
+        transferCommand = ['rsync','-a', '--progress', self.localPath, remotePath]
         print ' '.join(transferCommand)
         subprocess.call(transferCommand)
-
     def run_clustering_remotely(self):
-        client = paramiko.SSHClient()
-        client.load_system_host_keys()
-        client.connect(self.serverName, 22, self.serverUser)
-        client.exec_command('touch /tmp/test.paramiko.txt')
-        client.close()
+        self.client = paramiko.SSHClient()
+        self.client.load_system_host_keys()
+        self.client.connect(self.serverName, 22, self.serverUser)
+        commandFormat = 'python /home/bard/src/extracellpy/runclustering.py %s %s %d'
+        oneTetrode=1
+        commandStr = commandFormat%(self.animalName,self.ephysSession,oneTetrode)
+        #commandStr = 'touch /tmp/t2.txt'
+        print 'Creating FET files, clustering and creating report...'
+        (stdin,stdout,stderr) = self.client.exec_command(commandStr)
+        #print stderr.readlines()
+        print 'DONE!'
+        self.client.close()
         ######## FINISH THIS #########
     
 '''
@@ -452,13 +459,13 @@ if __name__ == "__main__":
         #merge_kk_clusters(animalName,ephysSession,tetrode,[2,10],reportDir='/tmp/reports')
     elif CASE==4:
         '''Test SessionToCluster (which runs the whole moving data and clustering remotely '''
-        animalName   = 'saja099'
+        animalName   = 'saja000'
         ephysSession = '2011-04-04_11-54-29'
         tetrodes = [1,2]
         thisSession = SessionToCluster(animalName,ephysSession,tetrodes,'bard',
-                                       'bard02','/home/bard/data/santiago/saja000/')
+                                       'bard02','/home/bard/data/santiago/')
         thisSession.transfer_data_to_server()
-        thisSession.run_clustering_remotely()
+        #thisSession.run_clustering_remotely()
         #thisSession.create_fet_files()
         
 '''
