@@ -123,20 +123,25 @@ class TetrodeToCluster(object):
         MaxClusters = 24          # See KlustaKwik.C for definition
         MaxPossibleClusters = 12  # See KlustaKwik.C for definition
         UseFeatures = (self.nFeatures*N_CHANNELS)*'1'
-        KKparamsFormat = '-Subset %d -MinClusters %d -MaxClusters %d -MaxPossibleClusters %d -UseFeatures %s';
-        KKparams = KKparamsFormat%(Subset,MinClusters,MaxClusters,MaxPossibleClusters,UseFeatures)
         KKtetrode = 'TT%s'%(self.tetrode)
         KKsuffix = '1'
         KKpath = settings.KK_PATH
-        commandToRun = '%s %s %s %s'%(KKpath,KKtetrode,KKsuffix,KKparams)
-        print commandToRun
-        # NOTE: redirecting to PIPE did not work. The process goes idle after 20+ sec.
-        ###self.process = subprocess.Popen([KKpath,KKtetrode,KKsuffix,KKparams],stdout=subprocess.PIPE,cwd=self.clustersDir)
-        #self.process = subprocess.Popen([KKpath,KKtetrode,KKsuffix,KKparams],stdout=open('/dev/null','w'),cwd=self.clustersDir)
-        returnCode = subprocess.call([KKpath,KKtetrode,KKsuffix,KKparams],cwd=self.clustersDir)
+        KKcommandAndParams = [KKpath,KKtetrode,KKsuffix, '-Subset','%d'%Subset,
+                              '-MinClusters','%d'%MinClusters, '-MaxClusters','%d'%MaxClusters,
+                              '-MaxPossibleClusters','%d'%MaxPossibleClusters,
+                              '-UseFeatures',UseFeatures]
+        print ' '.join(KKcommandAndParams)
+        returnCode = subprocess.call(KKcommandAndParams,cwd=self.clustersDir)
         if returnCode:
             print 'WARNING! clustering gave an error'
         '''
+        
+        #KKparamsFormat = '-Subset %d -MinClusters %d -MaxClusters %d -MaxPossibleClusters %d -UseFeatures %s';
+        #KKparams = KKparamsFormat%(Subset,MinClusters,MaxClusters,MaxPossibleClusters,UseFeatures)
+        #commandToRun = '%s %s %s %s'%(KKpath,KKtetrode,KKsuffix,KKparams)
+        # NOTE: redirecting to PIPE did not work. The process goes idle after 20+ sec.
+        ###self.process = subprocess.Popen([KKpath,KKtetrode,KKsuffix,KKparams],stdout=subprocess.PIPE,cwd=self.clustersDir)
+        #self.process = subprocess.Popen([KKpath,KKtetrode,KKsuffix,KKparams],stdout=open('/dev/null','w'),cwd=self.clustersDir)
         while self.process.poll() is None:
             print 'Not yet: %f'%(time.time())
             time.sleep(4)
@@ -459,7 +464,7 @@ def merge_kk_clusters(animalName,ephysSession,tetrode,clustersToMerge,reportDir=
 
 
 if __name__ == "__main__":
-    CASE = 1.2
+    CASE = 1.3
     if CASE==1:
         animalName   = 'saja125'
         ephysSession = '2012-01-31_14-37-44'
@@ -467,13 +472,17 @@ if __name__ == "__main__":
         sreport = ClusterReportTetrode(animalName,ephysSession,tetrode,'/tmp/reports')
         #sreport.save_report('/tmp/reports/')
         #sreport.closefig()
-    if CASE==1.2:
+    elif CASE==1.2:
         animalName   = 'saja129'
         ephysSession = '2012-08-19_14-03-17'
         tetrode = 6
         sreport = ClusterReportTetrode(animalName,ephysSession,tetrode,'/tmp/reports',nrows=24)
         #sreport.save_report('/tmp/reports/')
         #sreport.closefig()
+    elif CASE==1.3:
+        oneTT = TetrodeToCluster('saja000','2011-04-04_11-54-29',8)
+        oneTT.load_waveforms()
+        oneTT.run_clustering()
     elif CASE==2:
         animalName   = 'saja125'
         ephysSession = '2012-04-23_16-10-15'

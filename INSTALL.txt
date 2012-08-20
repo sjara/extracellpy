@@ -30,6 +30,10 @@
 - Add this directory to your Python path, by adding the following
   line to your ~/.bashrc :
   export PYTHONPATH=$PYTHONPATH:~/src
+- To add to the path system-wide:
+  create a file called extracellpy.pth containing one line with the path, e.g.,:
+   /home/bard/src
+  and place it in: /usr/local/lib/python2.6/dist-packages/
 - If modules for loading Neuralynx data are needed see instructions
   below on "COMPILING MODULE FOR LOADING DATA"
 
@@ -73,6 +77,11 @@ sudo /usr/bin/easy_install tables
 - Make a copy of settings_EXAMPLE.py and name it settings.py
 - Modify all relevant parameters in settings.py
 
+* NOTES FOR SPIKE-SORTING ON REMOTE SERVER:
+- You will need to make sure extracellpy is in the path by creating a
+  path file in /usr/local/lib/python2.6/dist-packages/
+- You will need to change the default backend for matplotlib to 'Agg',
+  so that it does not need X to make figures.
 
 * COMPILING MODULE FOR LOADING DATA:
   It requires Cython >0.14 which, if not in a package, can be installed with:
