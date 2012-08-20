@@ -47,7 +47,7 @@ class SessionToCluster(object):
         self.client.load_system_host_keys()
         self.client.connect(self.serverName, 22, self.serverUser)
         commandFormat = 'python /home/bard/src/extracellpy/runclustering.py %s %s %d'
-        oneTetrode=1
+        oneTetrode=7
         commandStr = commandFormat%(self.animalName,self.ephysSession,oneTetrode)
         #commandStr = 'touch /tmp/t2.txt'
         print 'Creating FET files, clustering and creating report...'
@@ -55,7 +55,26 @@ class SessionToCluster(object):
         #print stderr.readlines()
         print 'DONE!'
         self.client.close()
-        ######## FINISH THIS #########
+    def delete_fet_files(self):
+        pass
+    def transfer_results_back(self):
+
+        #localAnimalPath = 
+        ############ FIX THIS #############
+        ## It is saving inside Session folder ##
+
+
+        destPath = os.path.join(self.serverPath,self.animalName)
+        remotePath = '%s@%s:%s'%(self.serverUser,self.serverName,destPath)
+        remotePathResults = os.path.join(remotePath,self.ephysSession+'_kk')
+        remotePathReports = os.path.join(remotePath,self.ephysSession+'_report')
+        transferCommandResults = ['rsync','-a', '--progress', '--exclude', "'*.fet.*'",
+                                  remotePathResults, self.localPath]
+        transferCommandReports = ['rsync','-a', '--progress', remotePathReports, self.localPath]
+        print ' '.join(transferCommandResults)
+        subprocess.call(transferCommandResults)
+        print ' '.join(transferCommandReports)
+        subprocess.call(transferCommandReports)
     
 '''
         for indt,tetrode in enumerate(tetrodeList):
@@ -100,10 +119,12 @@ class TetrodeToCluster(object):
         # FIXME: it should not depend on dataTT, that way one can run it with just the FET file
         maxNumberOfEventsToUse = 1e5
         Subset = np.floor(self.dataTT.nEvents/min(self.dataTT.nEvents,maxNumberOfEventsToUse))
-        MaxPossibleClusters = 12
+        MinClusters = 10          # See KlustaKwik.C for definition
+        MaxClusters = 24          # See KlustaKwik.C for definition
+        MaxPossibleClusters = 12  # See KlustaKwik.C for definition
         UseFeatures = (self.nFeatures*N_CHANNELS)*'1'
-        KKparamsFormat = '-Subset %d -MinClusters 10 -MaxClusters %d -MaxPossibleClusters %d -UseFeatures %s';
-        KKparams = KKparamsFormat%(Subset,MaxPossibleClusters,MaxPossibleClusters,UseFeatures)
+        KKparamsFormat = '-Subset %d -MinClusters %d -MaxClusters %d -MaxPossibleClusters %d -UseFeatures %s';
+        KKparams = KKparamsFormat%(Subset,MinClusters,MaxClusters,MaxPossibleClusters,UseFeatures)
         KKtetrode = 'TT%s'%(self.tetrode)
         KKsuffix = '1'
         KKpath = settings.KK_PATH
@@ -438,12 +459,19 @@ def merge_kk_clusters(animalName,ephysSession,tetrode,clustersToMerge,reportDir=
 
 
 if __name__ == "__main__":
-    CASE = 4
+    CASE = 1.2
     if CASE==1:
         animalName   = 'saja125'
         ephysSession = '2012-01-31_14-37-44'
         tetrode = 6
         sreport = ClusterReportTetrode(animalName,ephysSession,tetrode,'/tmp/reports')
+        #sreport.save_report('/tmp/reports/')
+        #sreport.closefig()
+    if CASE==1.2:
+        animalName   = 'saja129'
+        ephysSession = '2012-08-19_14-03-17'
+        tetrode = 6
+        sreport = ClusterReportTetrode(animalName,ephysSession,tetrode,'/tmp/reports',nrows=24)
         #sreport.save_report('/tmp/reports/')
         #sreport.closefig()
     elif CASE==2:
