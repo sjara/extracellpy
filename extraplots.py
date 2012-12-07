@@ -7,7 +7,7 @@ Some plotting functions.
 plotintervalbars: Plot with thin errorbars given by interval (not errors). 
 '''
 
-import matplotlib.pyplot as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 
 def boxoff(ax,keep='left',yaxis=True):
@@ -59,8 +59,8 @@ def set_axes_color(ax,axColor):
             child.set_color(axColor)
 
 def set_ticks_fontsize(ax,fontSize):
-    mpl.setp(ax.get_xticklabels(),fontsize=fontSize)
-    mpl.setp(ax.get_yticklabels(),fontsize=fontSize)
+    plt.setp(ax.get_xticklabels(),fontsize=fontSize)
+    plt.setp(ax.get_yticklabels(),fontsize=fontSize)
 
             
 def plotintervalbars(Xvalues,Yvalues,Yinterval,PlotColor='k'):
@@ -73,11 +73,11 @@ def plotintervalbars(Xvalues,Yvalues,Yinterval,PlotColor='k'):
     '''
     #Yerr = np.c_[[1,-1]]*Yvalues + np.c_[[-1,1]]*Yinterval
     Yerr = Yvalues[:,np.newaxis]*np.r_[1,-1] + Yinterval*np.r_[-1,1]
-    (hpmain,hpcap,hperr)=mpl.errorbar(Xvalues,Yvalues,yerr=Yerr.T)
-    mpl.setp(hpmain,marker='o',linewidth=3,markersize=10,markeredgewidth=3)
-    mpl.setp(hpmain,mfc='w',mec=PlotColor,color=PlotColor)
-    mpl.setp(hperr,color=PlotColor)
-    mpl.setp(hpcap,color=PlotColor)
+    (hpmain,hpcap,hperr)=plt.errorbar(Xvalues,Yvalues,yerr=Yerr.T)
+    plt.setp(hpmain,marker='o',linewidth=3,markersize=10,markeredgewidth=3)
+    plt.setp(hpmain,mfc='w',mec=PlotColor,color=PlotColor)
+    plt.setp(hperr,color=PlotColor)
+    plt.setp(hpcap,color=PlotColor)
 
     return (hpmain,hpcap,hperr)
 
@@ -100,7 +100,7 @@ def stairshistogram(VarValue,BinsEdges,Nvalues=None,Xlims=None):
 
 def stairsplot(x,y):
     '''Plot stairs. A horizontal line stays at the same value until next Y point'''
-    hp = mpl.plot(np.repeat(x,2)[1:],np.repeat(y,2)[0:-1])
+    hp = plt.plot(np.repeat(x,2)[1:],np.repeat(y,2)[0:-1])
     return hp
 
 
@@ -223,40 +223,40 @@ THE FOLLOWING CODE NEEDS trialIndexForEachSpike AS PARAMETER.
 '''
 
 
-def plot_index_histogram(val1,val2,pValue,nBins=14,fontsize=12):
+def plot_index_histogram(val1,val2,pValue,nBins=14,fontsize=12,pSignif=0.05):
     '''
     returns (allbars,signifbars)
     where allbars is (y,x,patches)
     '''
     MI = (val1-val2)/np.abs(val1+val2)
-    MIsignif = MI[pValue<0.05]
+    MIsignif = MI[pValue<pSignif]
     if np.any(np.isnan(MI)):
         print 'MI contains NaN'
 
-    ax = mpl.gca()#mpl.axes([0.2,0.2,0.6,0.6])
+    ax = plt.gca()#plt.axes([0.2,0.2,0.6,0.6])
     histRange = [-1,1]
-    allbars = mpl.hist(MI,bins=nBins,range=histRange,color='0.75')
-    mpl.hold(True)
-    signifbars = mpl.hist(MIsignif,bins=nBins,range=histRange,color='0')
+    allbars = plt.hist(MI,bins=nBins,range=histRange,color='0.75')
+    plt.hold(True)
+    signifbars = plt.hist(MIsignif,bins=nBins,range=histRange,color='0')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     xtlines = ax.get_xticklines()
     ytlines = ax.get_yticklines()
     for t in xtlines[1::2]+ytlines[1::2]:
         t.set_visible(False)
-    yLims = mpl.ylim()
-    mpl.plot([0,0],[0,yLims[1]],color='k',linestyle=':',zorder=-1)
-    mpl.hold(False)
-    mpl.xlabel('Index: (x1-x2)/(x1+x2)',fontsize=fontsize)
-    mpl.ylabel('Number of cells',fontsize=fontsize)
-    mpl.setp(ax.get_xticklabels(),fontsize=fontsize-2)
-    mpl.setp(ax.get_yticklabels(),fontsize=fontsize-2)
+    yLims = plt.ylim()
+    plt.plot([0,0],[0,yLims[1]],color='k',linestyle=':',zorder=-1)
+    plt.hold(False)
+    plt.xlabel('Index: (x1-x2)/(x1+x2)',fontsize=fontsize)
+    plt.ylabel('Number of cells',fontsize=fontsize)
+    plt.setp(ax.get_xticklabels(),fontsize=fontsize-2)
+    plt.setp(ax.get_yticklabels(),fontsize=fontsize-2)
     ax.set_yticks(range(0,yLims[1]+1,10))
-    mpl.draw()
-    mpl.show()
+    plt.draw()
+    plt.show()
     return(allbars,signifbars)
 
-def plot_scatter(val1,val2,pValue,axlims=None,fontsize=12):
+def plot_scatter(val1,val2,pValue,axlims=None,fontsize=12,pSignif=0.05):
     if axlims is None:
         maxRate = np.nanmax([val1,val2])
         minRate = np.nanmin([val1,val2])
@@ -265,27 +265,27 @@ def plot_scatter(val1,val2,pValue,axlims=None,fontsize=12):
         minRate = axlims[0]
     if np.isinf(maxRate) or np.isinf(minRate):
         print 'One of the limits if INFINITE'
-    hp = mpl.plot(val1,val2,'o',mfc='none',mec='0.5')
-    signifPoints = pValue<0.05
-    mpl.hold(True)
-    hp = mpl.plot(val1[signifPoints],val2[signifPoints],'o',mfc='k',mec='k')
-    hline = mpl.plot([minRate,maxRate],[minRate,maxRate],'0.0',linestyle='--')
-    mpl.hold(False)
-    mpl.axis([minRate,maxRate,minRate,maxRate])
-    #mpl.axis('equal')
-    mpl.xlabel('x1')
-    mpl.ylabel('x2')
-    mpl.title('N=%d (%0.0f%% p<0.05)'%(len(pValue),100*float(sum(signifPoints))/len(pValue)))
-    mpl.draw()
-    mpl.show()
+    hp = plt.plot(val1,val2,'o',mfc='none',mec='0.5')
+    signifPoints = pValue<pSignif
+    plt.hold(True)
+    hp = plt.plot(val1[signifPoints],val2[signifPoints],'o',mfc='k',mec='k')
+    hline = plt.plot([minRate,maxRate],[minRate,maxRate],'0.0',linestyle='--')
+    plt.hold(False)
+    plt.axis([minRate,maxRate,minRate,maxRate])
+    #plt.axis('equal')
+    plt.xlabel('x1')
+    plt.ylabel('x2')
+    plt.title('N=%d (%0.0f%% p<%0.4f)'%(len(pValue),100*float(sum(signifPoints))/len(pValue),pSignif))
+    plt.draw()
+    plt.show()
 
-def plot_scatter_groups(data,pValue,color='None',axlims=None,fontsize=12):
+def plot_scatter_groups(data,pValue,color='None',axlims=None,fontsize=12,pSignif=0.05):
     '''
     data: list of M arrays of dimension Nx2
     pValue: list of M arrays of pvalues
     color: list of M colors
     '''
-    mpl.cla()
+    plt.cla()
     nGroups = len(data)
     allValues = np.concatenate(data)
     nValues = allValues.shape[0]
@@ -295,38 +295,67 @@ def plot_scatter_groups(data,pValue,color='None',axlims=None,fontsize=12):
     for indg in range(nGroups):
         val1 = data[indg][:,0]
         val2 = data[indg][:,1]
-        hp = mpl.plot(val1,val2,'o',mfc='none',mec=color[indg])
-        signifPoints = pValue[indg]<0.05
+        hp = plt.plot(val1,val2,'o',mfc='none',mec=color[indg])
+        signifPoints = pValue[indg]<pSignif
         nSignif += sum(signifPoints)
-        mpl.hold(True)
-        hp = mpl.plot(val1[signifPoints],val2[signifPoints],'o',mfc=color[indg],mec=color[indg])
+        plt.hold(True)
+        hp = plt.plot(val1[signifPoints],val2[signifPoints],'o',mfc=color[indg],mec=color[indg])
     if axlims is None:
         maxRate = np.nanmax(allValues)
         minRate = np.nanmin(allValues)
     else:
         maxRate = axlims[1]
         minRate = axlims[0]
-    hline = mpl.plot([minRate,maxRate],[minRate,maxRate],'0.0',linestyle='--')
-    mpl.hold(False)
-    mpl.axis([minRate,maxRate,minRate,maxRate])
-    #mpl.axis('equal')
-    mpl.xlabel('x1')
-    mpl.ylabel('x2')
-    #mpl.title('N=%d (%0.0f%% p<0.05)'%(len(pValue),100*float(sum(signifPoints))/len(pValue)))
-    mpl.title('N=%d (%0.0f%% p<0.05)'%(nValues,100*float(nSignif)/nValues))
-    mpl.draw()
-    mpl.show()
+    hline = plt.plot([minRate,maxRate],[minRate,maxRate],'0.0',linestyle='--')
+    plt.hold(False)
+    plt.axis([minRate,maxRate,minRate,maxRate])
+    #plt.axis('equal')
+    plt.xlabel('x1')
+    plt.ylabel('x2')
+    #plt.title('N=%d (%0.0f%% p<0.05)'%(len(pValue),100*float(sum(signifPoints))/len(pValue)))
+    plt.title('N=%d (%0.0f%% p<%0.4f)'%(nValues,100*float(nSignif)/nValues,pSignif))
+    plt.draw()
+    plt.show()
 
+def significance_stars(xRange,yPos,yLength,nStars=1,starColor='k',starMarker='*',gapFactor=0.1):
+    plt.hold(True) # FIXME: Use holdState
+    xGap = gapFactor*nStars
+    xVals = [xRange[0],xRange[0], 
+             np.mean(xRange)-xGap*np.diff(xRange), np.nan, 
+             np.mean(xRange)+xGap*np.diff(xRange),
+             xRange[1],xRange[1]]
+    yVals = [yPos-yLength, yPos, yPos, np.nan, yPos, yPos, yPos-yLength]
+    plt.plot(xVals,yVals,color=starColor)
+    xPosStar = [] # FINISH THIS! IT DOES NOT WORK WITH nStars>1
+    hs, = plt.plot(np.mean(xRange),np.tile(yPos,nStars),
+                   starMarker,color=starColor,mec=starColor)
+    hs.set_markersize(8)
+    plt.hold(False)
+    
 
 if __name__ == "__main__":
 
-    Xvalues = np.arange(10)
-    Yvalues = Xvalues**1.2
-    #Yerr = np.c_[[-1,1]]*np.ones((2,10))
-    Yerr = np.ones((10,2))*[-1,1]
-    Yinterval = Yvalues[:,np.newaxis] + Yerr
-    PlotColor = 'y'
-    (hpmain,hpcap,hperr) = plotintervalbars(Xvalues,Yvalues,Yinterval,PlotColor)
-    mpl.show()
-    mpl.draw()
-    
+    CASE = 2
+    if CASE==1:
+        Xvalues = np.arange(10)
+        Yvalues = Xvalues**1.2
+        #Yerr = np.c_[[-1,1]]*np.ones((2,10))
+        Yerr = np.ones((10,2))*[-1,1]
+        Yinterval = Yvalues[:,np.newaxis] + Yerr
+        PlotColor = 'y'
+        (hpmain,hpcap,hperr) = plotintervalbars(Xvalues,Yvalues,Yinterval,PlotColor)
+        plt.show()
+        plt.draw()
+    elif CASE==2:
+        plt.clf()
+        plt.bar([1,2],[0.5,0.7],align='center')
+        plt.xlim([0,3]); plt.ylim([0,1])
+        xRange = [1, 2]
+        yPos = 0.9
+        yLength = 0.05
+        starColor = 'k'
+        starMarker = '*'
+        nStars = 1
+        significance_stars(xRange,yPos,yLength,nStars,starColor,starMarker)
+        plt.draw(); plt.show()
+
