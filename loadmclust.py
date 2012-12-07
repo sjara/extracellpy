@@ -145,11 +145,10 @@ if __name__ == "__main__":
         Verify sizes:
         len(ts)
         sum(clusterAssignment)
-
         '''
     elif CASE==2:
         tFiles = ['/home/sjara/tmp/mclustdata/TT7_1.t','/home/sjara/tmp/mclustdata/TT7_2.t']
         tetrodeFile = '/home/sjara/tmp/mclustdata/TT7.ntt'
         outputFilename = '/tmp/TT7.clu.1'
         clu = tfiles_to_clu(tFiles,tetrodeFile,outputFilename)
-        pass        
+
