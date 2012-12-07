@@ -34,12 +34,13 @@ class SessionToCluster(object):
         self.serverUser = serverUser
         self.serverName = serverName
         self.serverPath = serverPath
-        self.localPath = os.path.join(settings.EPHYS_PATH,animalName,ephysSession)
+        self.localAnimalPath = os.path.join(settings.EPHYS_PATH,animalName)
+        self.localSessionPath = os.path.join(self.localAnimalPath,ephysSession)
         self.client = None
     def transfer_data_to_server(self):
         destPath = os.path.join(self.serverPath,self.animalName)
         remotePath = '%s@%s:%s'%(self.serverUser,self.serverName,destPath)
-        transferCommand = ['rsync','-a', '--progress', self.localPath, remotePath]
+        transferCommand = ['rsync','-a', '--progress', self.localSessionPath, remotePath]
         print ' '.join(transferCommand)
         subprocess.call(transferCommand)
     def run_clustering_remotely(self):
@@ -47,41 +48,56 @@ class SessionToCluster(object):
         self.client.load_system_host_keys()
         self.client.connect(self.serverName, 22, self.serverUser)
         commandFormat = 'python /home/bard/src/extracellpy/runclustering.py %s %s %d'
-        oneTetrode=7
-        commandStr = commandFormat%(self.animalName,self.ephysSession,oneTetrode)
-        #commandStr = 'touch /tmp/t2.txt'
-        print 'Creating FET files, clustering and creating report...'
-        (stdin,stdout,stderr) = self.client.exec_command(commandStr)
-        #print stderr.readlines()
-        print 'DONE!'
+
+        ######## FIXME: HARDCODED PATH #########
+
+        for oneTetrode in self.tetrodes:
+            #oneTetrode=7
+            commandStr = commandFormat%(self.animalName,self.ephysSession,oneTetrode)
+            print 'TT%d : creating FET files, clustering and creating report...'%oneTetrode
+            (stdin,stdout,stderr) = self.client.exec_command(commandStr)
+            #print stderr.readlines()
+            print 'DONE!'
         self.client.close()
     def delete_fet_files(self):
-        pass
+        kkResultsPathRemote = os.path.join(self.serverPath,self.animalName,self.ephysSession)+'_kk'
+        commandStr = 'mv %s/*.fet.* /tmp/'%kkResultsPathRemote
+        print 'Deleting FET files...'
+        print commandStr
+        self.client = paramiko.SSHClient()
+        self.client.load_system_host_keys()
+        self.client.connect(self.serverName, 22, self.serverUser)
+        (stdin,stdout,stderr) = self.client.exec_command(commandStr)
+        #print commandStr
+        print 'DONE!'
     def transfer_results_back(self):
-
-        #localAnimalPath = 
-        ############ FIX THIS #############
-        ## It is saving inside Session folder ##
-
-
         destPath = os.path.join(self.serverPath,self.animalName)
         remotePath = '%s@%s:%s'%(self.serverUser,self.serverName,destPath)
         remotePathResults = os.path.join(remotePath,self.ephysSession+'_kk')
         remotePathReports = os.path.join(remotePath,self.ephysSession+'_report')
         transferCommandResults = ['rsync','-a', '--progress', '--exclude', "'*.fet.*'",
-                                  remotePathResults, self.localPath]
-        transferCommandReports = ['rsync','-a', '--progress', remotePathReports, self.localPath]
+                                  remotePathResults, self.localAnimalPath]
+        transferCommandReports = ['rsync','-a', '--progress', remotePathReports, self.localAnimalPath]
         print ' '.join(transferCommandResults)
         subprocess.call(transferCommandResults)
         print ' '.join(transferCommandReports)
         subprocess.call(transferCommandReports)
-    
-'''
-        for indt,tetrode in enumerate(tetrodeList):
-        if isinstance(self.tetrodeList,int):
-            tetrodeList = [tetrodeList]
-'''
-            
+    def consolidate_reports(self):
+        # Create dest folder
+        # Copy reports to that folder
+        reportsDir = os.path.join(self.localAnimalPath,'clusters_report')
+        thisSessionReportsDir = self.localSessionPath+'_report'
+        if not os.path.exists(reportsDir):
+            print 'Creating output directory: %s'%(reportsDir)
+            os.makedirs(reportsDir)
+        commandList = ['rsync','-a',thisSessionReportsDir+'/*',reportsDir]
+        commandStr = ' '.join(commandList)
+        print 'Consolidating reports...'
+        print commandStr
+        subprocess.call(commandStr,shell=True)
+        print 'DONE!'
+
+        
 class TetrodeToCluster(object):
     def __init__(self,animalName,ephysSession,tetrode):
         self.animalName = animalName
@@ -400,7 +416,8 @@ class ClusterReportFromData(object):
 
 
 class ClusterReportTetrode(ClusterReportFromData):
-    def __init__(self,animalName,ephysSession,tetrode,outputDir=None,showfig=False,nrows=12):
+    def __init__(self,animalName,ephysSession,tetrode,outputDir=None,showfig=False,
+                 figtitle=None,nrows=12):
         self.animalName = animalName
         self.ephysSession = ephysSession
         self.tetrode = tetrode
@@ -409,10 +426,14 @@ class ClusterReportTetrode(ClusterReportFromData):
         self.tetrodeFile = ''
         #self.dataTT = []
 
+        if figtitle is None:
+            self.figTitle = self.dataDir+' (T%d)'%self.tetrode  #tetrodeFile
+        else:
+            self.figTitle = figtitle
         self.load_data()
         super(ClusterReportTetrode, self).__init__(self.dataTT,outputDir=outputDir,
-                                                   showfig=showfig,nrows=nrows)
-        self.figTitle = self.dataDir+' (T%d)'%self.tetrode  #tetrodeFile
+                                                   showfig=showfig,figtitle=self.figTitle,
+                                                   nrows=nrows)
     def load_data(self):
         self.dataDir = os.path.join(settings.EPHYS_PATH,'%s/%s/'%(self.animalName,self.ephysSession))
         clustersDir = os.path.join(settings.EPHYS_PATH,'%s/%s_kk/'%(self.animalName,self.ephysSession))
@@ -464,7 +485,7 @@ def merge_kk_clusters(animalName,ephysSession,tetrode,clustersToMerge,reportDir=
 
 
 if __name__ == "__main__":
-    CASE = 1.3
+    CASE = 4
     if CASE==1:
         animalName   = 'saja125'
         ephysSession = '2012-01-31_14-37-44'
@@ -501,9 +522,10 @@ if __name__ == "__main__":
         tetrodes = [1,2]
         thisSession = SessionToCluster(animalName,ephysSession,tetrodes,'bard',
                                        'bard02','/home/bard/data/santiago/')
-        thisSession.transfer_data_to_server()
+        #thisSession.transfer_data_to_server()
         #thisSession.run_clustering_remotely()
         #thisSession.create_fet_files()
+        thisSession.delete_fet_files()
         
 '''
 animalName   = 'saja125'

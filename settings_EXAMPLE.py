@@ -27,7 +27,12 @@ PROCESSED_REVERSAL_PATH = '/var/data/neuralynx/%s_test/'
 ###PROCESSED_REVERSAL_PATH = '/var/data/neuralynx/%s_processed/'
 ###RASTER_PLOTS_REVERSAL_PATH = '/var/data/neuralynx/%s_rasters/'
 
+# -- Spike sorting --
 KK_PATH = '/var/misc/toolbox/KK2/KlustaKwik'
+#SPIKESORTING_SERVER = 'zelk'
+#SPIKESORTING_SERVER_PATH = '/home/sjara/data'
+#SPIKESORTING_SERVER_KK_PATH = '/home/sjara/data'
+
 
 # -- DO NOT EDIT BELOW ---
 CLUSTERS_REPORTS_DIR = 'cluster_reports'

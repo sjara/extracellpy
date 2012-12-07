@@ -180,17 +180,18 @@ class WaveformCutterSession(object):
             else:
                 spikesSubset = spikesSubset | onecluster.spikesBool
         return spikesSubset
-    def save_clusters(self):
+    def save_clusters(self,confirm=True):
         '''
         Save text file (following KK convention)
         First item is how many clusters. Then nSpikes numbers with the cluster for each spikes.
         (in the files indices start with 1)
         '''
         if os.path.exists(self.clustersFile):
-            ovwr = raw_input('Overwrite file? [y/n]  ')
-            if ovwr!='y':
-                print 'Nothing was saved'
-                return
+            if confirm:
+                ovwr = raw_input('Overwrite file? [y/n]  ')
+                if ovwr!='y':
+                    print 'Nothing was saved'
+                    return
         #self.outputFile = self.clustersFile[:-1]+'0'
         #self.outputFile = '/tmp/clu.0'
         self.outputFile = self.clustersFile
