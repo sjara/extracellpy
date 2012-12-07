@@ -10,6 +10,7 @@ reload(sessionanalysis)
 from extracellpy import spikesanalysis
 reload(spikesanalysis)
 from extracellpy import extraplots
+reload(extraplots)
 from extracellpy import frequencytuning
 reload(frequencytuning)
 from extracellpy import celldatabase
@@ -499,13 +500,15 @@ def load_cells_database(animalsNames):
     return cellDB
     
 
-def save_summary_responsiveness(animalsNames,zThreshold=3):
+def save_summary_responsiveness(animalsNames,zThreshold=3,responseRange=[0,0.150]):
     '''
     Evaluate which cells show a response to each of the stimuli (given z-scores).
     Results are saved in settings.PROCESSED_REVERSAL_PATH
       where %s is replaced by 'all'.
     '''
-    rangeToEvaluate = [0,0.2] # sec from event onset
+    #rangeToEvaluate = [0,0.2] # sec from event onset
+    #rangeToEvaluate = [0,0.150] # sec from event onset
+    rangeToEvaluate = responseRange
     lockedTo = 'SoundOn'
     
     cellDB = load_cells_database(animalsNames)
@@ -1023,7 +1026,7 @@ def plot_summary_modulation_TEMP(animalsNames,lockedTo='SoundOn',nBins = 32):
     print 'p-value = %0.4f'%pval
 
     
-def plot_summary_modulation_grouped(animalsNames,lockedTo='SoundOn',nBins = 16):
+def plot_summary_modulation_grouped(animalsNames,lockedTo='SoundOn',nBins = 16, psignif=0.05):
     '''
     Grouped and colored according to positive/negative response
     '''
@@ -1061,6 +1064,14 @@ def plot_summary_modulation_grouped(animalsNames,lockedTo='SoundOn',nBins = 16):
         pValToPlot = mdata['pValueMod'][soundResponsive]
         pValToPlot[~mdata['consistentMod'][soundResponsive]] = 1
 
+    (tstatw,pvalPos) = stats.wilcoxon(dataToPlotPos[:,0],dataToPlotPos[:,1]) # paired test
+    print 'p-value (POS) = %0.4f'%pvalPos
+    (tstatw,pvalNeg) = stats.wilcoxon(dataToPlotNeg[:,0],dataToPlotNeg[:,1]) # paired test
+    print 'p-value (NEG)= %0.4f'%pvalNeg
+    dataToPlot = np.vstack((dataToPlotPos,-dataToPlotNeg))
+    (tstatw,pval) = stats.wilcoxon(dataToPlot[:,0],dataToPlot[:,1]) # paired test
+    print 'p-value (POS & -NEG)= %0.4f'%pval
+
     # --- Plot results ---
     from extracellpy import extraplots
     plt.clf()
@@ -1068,12 +1079,12 @@ def plot_summary_modulation_grouped(animalsNames,lockedTo='SoundOn',nBins = 16):
     plt.subplot(2,2,1)
     extraplots.plot_index_histogram(dataToPlotPos[:,0],
                                     dataToPlotPos[:,1],
-                                    pValue=pValToPlotPos,nBins=nBins)
+                                    pValue=pValToPlotPos,nBins=nBins,pSignif=psignif)
     plt.xlim([-0.6,0.6])
     plt.subplot(2,2,3)
     extraplots.plot_index_histogram(dataToPlotNeg[:,0],
                                     dataToPlotNeg[:,1],
-                                    pValue=pValToPlotNeg,nBins=nBins)
+                                    pValue=pValToPlotNeg,nBins=nBins,pSignif=psignif)
     plt.xlim([-0.6,0.6])
     '''
     extraplots.plot_scatter_groups([dataToPlotPos,dataToPlotNeg],
@@ -1087,21 +1098,14 @@ def plot_summary_modulation_grouped(animalsNames,lockedTo='SoundOn',nBins = 16):
     plt.subplot(2,2,2)
     extraplots.plot_scatter_groups([np.log10(dataToPlotPos)],
                                    [pValToPlotPos],
-                                   color=['r'],axlims=axLims)
+                                   color=['r'],axlims=axLims,pSignif=psignif)
     #plt.axis([-1,1,-1,1])
     plt.subplot(2,2,4)
     extraplots.plot_scatter_groups([np.log10(dataToPlotNeg)],
                                    [pValToPlotNeg],
-                                   color=['b'],axlims=axLims)
+                                   color=['b'],axlims=axLims,pSignif=psignif)
     #plt.axis([-1,1,-1,1])
 
-    (tstatw,pvalPos) = stats.wilcoxon(dataToPlotPos[:,0],dataToPlotPos[:,1]) # paired test
-    print 'p-value (POS) = %0.4f'%pvalPos
-    (tstatw,pvalNeg) = stats.wilcoxon(dataToPlotNeg[:,0],dataToPlotNeg[:,1]) # paired test
-    print 'p-value (NEG)= %0.4f'%pvalNeg
-    dataToPlot = np.vstack((dataToPlotPos,-dataToPlotNeg))
-    (tstatw,pval) = stats.wilcoxon(dataToPlot[:,0],dataToPlot[:,1]) # paired test
-    print 'p-value (POS & -NEG)= %0.4f'%pval
 
     cellDBmodPos = cellDB.subset(selectedCellsPos & mdata['consistentMod'] & (mdata['pValueMod']<0.05))
     cellDBmodNeg = cellDB.subset(selectedCellsNeg & mdata['consistentMod'] & (mdata['pValueMod']<0.05))
@@ -1417,7 +1421,202 @@ def plot_summary_earlylate_TEMP(animalsNames,lockedTo='SoundOn',nBins = 32):
     print("(Spearman's) rho=%f  p=%f"%(srho,spval))
 
 
-def save_zscores_bychoice(animalName,lockedTo='SoundOn'):
+def save_zscores_bychoice(animalName,lockedTo='SoundOn',responseRange=[0.250,0.400]):
+    '''
+    Calculate z-scores between rightward and leftward choices.
+    Data directories are defined in .../extracellpy/settings.py
+
+    Parameters
+    ----------
+    animalName: string. Name of animal.For example 'saja000'
+    lockedTo  : string. Tested for 'SoundOn' and 'Cout'.
+    '''
+    MIN_TRIALS_PER_BLOCK = 75
+
+    # -- Load list of cells --
+    sys.path.append(settings.CELL_LIST_PATH)
+    dataModule = 'allcells_%s'%(animalName)
+    allcells = __import__(dataModule)
+    reload(allcells)
+    dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
+    dataDir = os.path.join(dataPath,'lockedTo%s'%(lockedTo))
+    outputDir = os.path.join(dataPath,'zscores_bychoice_%s'%lockedTo)
+
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+
+    respDuration = np.diff(responseRange)
+
+    prevSession = ''
+    for indcell,onecell in enumerate(allcells.cellDB):
+        cellStr = str(onecell).replace(' ','_')
+        fileName = os.path.join(dataDir,cellStr+'_'+lockedTo+'.npz')
+        ephysData = np.load(fileName)
+
+        # -- Load behavior --
+        if ephysData['behavSession']==prevSession:
+            print 'Behavior already loaded'
+        else:
+            print 'Loading %s [%s] - %s'%(ephysData['animalName'],ephysData['behavSession'],cellStr)
+            behavData = sessionanalysis.load_behavior_session(ephysData['animalName'],
+                                                              ephysData['behavSession'])
+
+            trialsMidFreq = (behavData['TargetFreq']==behavData['FreqMid'][-1])
+            prevSession = ephysData['behavSession']
+        # -- Find modulation for all blocks merged --
+        eachCondLabel = ['RightwardChoice','LeftwardChoice']
+        validEachCond = np.c_[behavData.rightChoice,behavData.leftChoice]
+        trialsToCompare = validEachCond & ~behavData.early[:,np.newaxis]
+        
+        (meanRespEachCond,pValueMod) = \
+            spikesanalysis.evaluate_modulation(ephysData['spikeTimesFromEventOnset'],
+                                               ephysData['indexLimitsEachTrial'],
+                                               responseRange,list(trialsToCompare.T))
+        nTrialsEachCond = np.sum(trialsToCompare,axis=0)
+        # --- Save data for this cell ---
+        outputFileName = os.path.join(outputDir,'zscore_bychoice_'+cellStr+'_'+lockedTo+'.npz')
+        np.savez(outputFileName,responseRange=responseRange,
+                 meanRespEachCond=meanRespEachCond,
+                 eachCondLabel=eachCondLabel,
+                 nTrialsEachCond=nTrialsEachCond,
+                 pValueMod=pValueMod)
+
+def save_summary_bychoice(animalsNames,lockedTo='SoundOn'):
+    '''
+    Create array with z-scores from all cells.
+    Data directories are defined in .../extracellpy/settings.py
+    Results are saved in settings.PROCESSED_REVERSAL_PATH
+      where %s is replaced by 'all'.
+
+    Parameters
+    ----------
+    animalsNames: string. Name of animal.For example 'saja000'
+    lockedTo  : string. Tested for 'SoundOn'
+    '''
+    cellDB = load_cells_database(animalsNames)
+    nCells = len(cellDB)
+
+    meanRespEachCond = np.empty((nCells,2),dtype=float)
+    nTrialsEachCond = np.empty((nCells,2),dtype=int)
+    pValueMod = np.empty(nCells,dtype=float)
+    strEachCell = []
+
+    print 'Loading all zscores... '
+    for indcell,onecell in enumerate(cellDB):
+        dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+        dataDir = os.path.join(dataPath,'zscores_bychoice_%s'%lockedTo)
+        cellStr = str(onecell).replace(' ','_')
+        fileName = os.path.join(dataDir,'zscore_bychoice_'+cellStr+'_'+lockedTo+'.npz')
+        zScoreData = np.load(fileName)
+
+        meanRespEachCond[indcell,:] = zScoreData['meanRespEachCond']
+        pValueMod[indcell] = zScoreData['pValueMod']
+        nTrialsEachCond[indcell,:] = zScoreData['nTrialsEachCond']
+        strEachCell.append(cellStr)
+        
+    strAllAnimals = '-'.join(animalsNames)
+    outputDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+    outputFileName = os.path.join(outputDir,'summary_bychoice_%s_%s.npz'%(strAllAnimals,lockedTo))
+    print 'Saving summary to %s'%outputFileName
+    np.savez(outputFileName,strEachCell=strEachCell,
+             meanRespEachCond=meanRespEachCond,
+             pValueMod=pValueMod,
+             nTrialsEachCond=nTrialsEachCond)
+
+def load_summary_bychoice(animalsNames,lockedTo='SoundOn'):
+    ''' 
+    Load summary of comparison rightward/leftward choice trials.
+
+    NOTE: response data is always with respect to SoundOn, but modulation
+          data can be w.r.t SoundOn or Cout
+    '''
+    lockedToResp = 'SoundOn'
+    cellDB = load_cells_database(animalsNames)
+    strAllAnimals = '-'.join(animalsNames)
+    dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    respFileName = os.path.join(dataDir,'summary_resp_%s_%s.npz'%(strAllAnimals,lockedToResp))
+    modFileName = os.path.join(dataDir,'summary_bychoice_%s_%s.npz'%(strAllAnimals,lockedTo))
+    respData = np.load(respFileName)
+    modData = np.load(modFileName)
+    return (modData,respData,cellDB)
+
+
+def plot_summary_bychoice_TEMP(animalsNames,lockedTo='SoundOn',nBins = 20, psignif=0.05):
+    '''
+    TEMP FUNCTION: it needs to be finished
+workflow.plot_summary_bychoice_TEMP(['saja099','saja100'],lockedTo='SoundOn',nBins=24)
+workflow.plot_summary_bychoice_TEMP(['saja129','saja156'],lockedTo='SoundOn',nBins=24)
+    '''
+    from scipy import stats
+
+    (mdata,rdata,cellDB) = load_summary_bychoice(animalsNames,lockedTo=lockedTo)
+    meanRespEachCond = mdata['meanRespEachCond']
+    pValueMod = mdata['pValueMod']
+
+    onlyResponsive = True
+    if onlyResponsive:
+        respRange = [0,0.15]
+        respSamples = (rdata['rangeStart']>=respRange[0]) & (rdata['rangeStart']<=respRange[-1])
+        midFreqInd = 4  # all trials with midFreq (both blocks)
+        zscores = rdata['zStatsEachCell'][:,midFreqInd,:]
+        positiveResp = np.mean(zscores[respSamples,:],axis=0)>0
+        '''
+        '''
+        
+        #responsiveCells = rdata['responsiveLowFreq'] | rdata['responsiveHighFreq'] | rdata['responsiveMidFreqCombined']
+        responsiveCells = rdata['responsiveMidFreqCombined'] & positiveResp
+        dataToPlot = meanRespEachCond[responsiveCells,:]
+        pValToPlot = pValueMod[responsiveCells]
+    else:
+        dataToPlot = meanRespEachCond
+        pValToPlot = pValueMod
+        
+    modIndex = (dataToPlot[:,0]-dataToPlot[:,1])/(dataToPlot[:,0]+dataToPlot[:,1])
+
+    # --- Plot results ---
+    from extracellpy import extraplots
+    plt.clf()
+    plt.setp(plt.gcf(),facecolor='w')
+
+    plt.subplot(1,2,1)
+    extraplots.plot_index_histogram(dataToPlot[:,0],
+                                    dataToPlot[:,1],
+                                    pValue=pValToPlot,nBins=nBins,pSignif=psignif)
+    #plt.xlim([-0.6,0.6])
+    axLims =[-1,1,-1,1]
+    plt.subplot(1,2,2)
+    extraplots.plot_scatter_groups([np.log10(dataToPlot)],
+                                   [pValToPlot],
+                                   color=['b'],axlims=axLims,pSignif=psignif)
+
+    '''
+    plt.subplot(1,2,1)
+    plt.plot(dataToPlot[:,0],dataToPlot[:,1],'o',mfc='None',mec='k')
+    plt.xlabel('Response (rightward)')
+    plt.ylabel('Response (leftward)')
+    plt.axis('equal')
+    #plt.axis([0.5,1.05, 0.5,1.05])
+    plt.hold(True)
+    maxVal = np.max(dataToPlot)
+    plt.plot([0,maxVal],[0,maxVal],color='0.75')
+    plt.hold(False)
+    
+    plt.subplot(1,2,2)
+    plt.hist(modIndex)
+    '''
+    
+    plt.draw()
+    plt.show()        
+
+    (tstatw,pval) = stats.wilcoxon(dataToPlot[:,0],dataToPlot[:,1]) # paired test
+    print 'p-value = %0.4f'%pval
+
+    
+def save_zscores_byoutcome(animalName,lockedTo='SoundOn'):
     '''
     Calculate z-scores for a given association sound-action between correct and incorrect
     Data directories are defined in .../extracellpy/settings.py
@@ -1442,7 +1641,7 @@ def save_zscores_bychoice(animalName,lockedTo='SoundOn'):
     reload(allcells)
     dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
     dataDir = os.path.join(dataPath,'lockedTo%s'%(lockedTo))
-    outputDir = os.path.join(dataPath,'zscores_bychoice_%s'%lockedTo)
+    outputDir = os.path.join(dataPath,'zscores_byoutcome_%s'%lockedTo)
 
     if not os.path.exists(outputDir):
         print 'Creating output directory: %s'%(outputDir)
@@ -1497,7 +1696,7 @@ def save_zscores_bychoice(animalName,lockedTo='SoundOn'):
         #meanRespEachCondHighBound=meanRespEachCondHighBound,pValueModHighBound=pValueModHighBound,
 
         # --- Save data for this cell ---
-        outputFileName = os.path.join(outputDir,'zscore_bychoice_'+cellStr+'_'+lockedTo+'.npz')
+        outputFileName = os.path.join(outputDir,'zscore_byoutcome_'+cellStr+'_'+lockedTo+'.npz')
         np.savez(outputFileName,responseRange=responseRange,
                  meanRespEachCond=meanRespEachCond,
                  eachCondLabel=eachCondLabel,
@@ -1505,7 +1704,7 @@ def save_zscores_bychoice(animalName,lockedTo='SoundOn'):
                  nTrialsEachCond=nTrialsEachCond,
                  pValueMod=pValueMod)
 
-def save_summary_bychoice(animalsNames,lockedTo='SoundOn'):
+def save_summary_byoutcome(animalsNames,lockedTo='SoundOn'):
     '''
     Create array with z-scores from all cells.
     Data directories are defined in .../extracellpy/settings.py
@@ -1530,9 +1729,9 @@ def save_summary_bychoice(animalsNames,lockedTo='SoundOn'):
     print 'Loading all zscores... '
     for indcell,onecell in enumerate(cellDB):
         dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
-        dataDir = os.path.join(dataPath,'zscores_bychoice_%s'%lockedTo)
+        dataDir = os.path.join(dataPath,'zscores_byoutcome_%s'%lockedTo)
         cellStr = str(onecell).replace(' ','_')
-        fileName = os.path.join(dataDir,'zscore_bychoice_'+cellStr+'_'+lockedTo+'.npz')
+        fileName = os.path.join(dataDir,'zscore_byoutcome_'+cellStr+'_'+lockedTo+'.npz')
         zScoreData = np.load(fileName)
 
         thisCellInds = indcell*2 + np.arange(2)
@@ -1548,7 +1747,7 @@ def save_summary_bychoice(animalsNames,lockedTo='SoundOn'):
     if not os.path.exists(outputDir):
         print 'Creating output directory: %s'%(outputDir)
         os.makedirs(outputDir)
-    outputFileName = os.path.join(outputDir,'summary_bychoice_%s_%s.npz'%(strAllAnimals,lockedTo))
+    outputFileName = os.path.join(outputDir,'summary_byoutcome_%s_%s.npz'%(strAllAnimals,lockedTo))
     print 'Saving summary to %s'%outputFileName
     np.savez(outputFileName,strEachCell=strEachCell,
              meanRespEachType=meanRespEachType,
@@ -1557,7 +1756,7 @@ def save_summary_bychoice(animalsNames,lockedTo='SoundOn'):
              eachCondLabel=zScoreData['eachCondLabel'],
              blockTypeLabel=zScoreData['blockTypeLabel'])
 
-def load_summary_bychoice(animalsNames,lockedTo='SoundOn'):
+def load_summary_byoutcome(animalsNames,lockedTo='SoundOn'):
     ''' 
     Load summary of modulation, responses and list of cells.
 
@@ -1569,17 +1768,17 @@ def load_summary_bychoice(animalsNames,lockedTo='SoundOn'):
     strAllAnimals = '-'.join(animalsNames)
     dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
     respFileName = os.path.join(dataDir,'summary_resp_%s_%s.npz'%(strAllAnimals,lockedToResp))
-    modFileName = os.path.join(dataDir,'summary_bychoice_%s_%s.npz'%(strAllAnimals,lockedTo))
+    modFileName = os.path.join(dataDir,'summary_byoutcome_%s_%s.npz'%(strAllAnimals,lockedTo))
     respData = np.load(respFileName)
     modData = np.load(modFileName)
     return (modData,respData,cellDB)
 
-def plot_summary_bychoice_TEMP(animalsNames,lockedTo='SoundOn',nBins = 32):
+def plot_summary_byoutcome_TEMP(animalsNames,lockedTo='SoundOn',nBins = 32):
     '''
     TEMP FUNCTION: it needs to be finished
     '''
     from scipy import stats
-    (mdata,rdata,cellDB) = load_summary_bychoice(animalsNames,lockedTo='SoundOn')
+    (mdata,rdata,cellDB) = load_summary_byoutcome(animalsNames,lockedTo='SoundOn')
 
     meanRespEachType = mdata['meanRespEachType']
     pValueMod = mdata['pValueMod']
