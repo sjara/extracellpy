@@ -70,7 +70,7 @@ def read_tt(SpikesDataFileName):
     timestamps = 1e-4*timestamps        # From 100usec to sec (see NSpike/MClust docs)
     return timestamps
 
-
+# ============== From MClust t-files to KK clu-files ==================
 '''
 We need a way to get data saved by MClust and load it into our processing workflow.
 It means the data should be located in a standard folder, named in a particular way
@@ -98,24 +98,32 @@ def tfiles_to_clu(tFiles,tetrodeFile,outputFilename=''):
     if isinstance(tFiles,str):
         tFiles=[tFiles]
     dataTT = loadneuralynx.DataTetrode(tetrodeFile)
-    nlts = (dataTT.timestamps/100).astype('int32')
+    ###nlts = (dataTT.timestamps/100).astype('int32')
+    # Necessary because rounding is different in numpy and matlab
+    #  searchsorted (below) will find the right index.
+    nlts = np.ceil(dataTT.timestamps.astype(float)/100).astype('int32')
     clusterAssignment = np.zeros(nlts.shape,dtype='int')
     for indfile,tfilename in enumerate(tFiles):
         print 'Processing t-file #%d ...'%(indfile+1)
         tempClusterAssig = np.zeros(nlts.shape,dtype='int')
         ts = read_t(tfilename,insec=False)
+        sorted_index = np.searchsorted(nlts,ts,'left')
+        clusterAssignment[sorted_index]=(indfile+1)
+        '''
         for ind,onets in enumerate(ts):
             spikeMatch = abs(nlts-onets)<2 # Needed because of rounding issue
             # NOTE: this is faster than using flatnonzero and assigning that index
             tempClusterAssig = tempClusterAssig + spikeMatch
         clusterAssignment = clusterAssignment+(indfile+1)*tempClusterAssig
+        '''
+        ###print ts[:4]
+        ###print dataTT.timestamps[clusterAssignment==(indfile+1)][:4]
     if outputFilename:
         print 'Saving clu file to %s'%outputFilename
         dataToSave = np.concatenate(([len(tFiles)+1],clusterAssignment))
         np.savetxt(outputFilename, dataToSave, fmt="%d")
     # -- Save data --
     return clusterAssignment
-
 
 
 if __name__ == "__main__":
@@ -128,19 +136,32 @@ if __name__ == "__main__":
         tetrodeFile = '/home/sjara/tmp/mclustdata/TT7.ntt'
         dataTT = loadneuralynx.DataTetrode(tetrodeFile)
         ###dataTT.timestamps = dataTT.timestamps.astype(np.float64)*1e-6  # in sec
-        nlts = (dataTT.timestamps/100).astype('int32')
+        #nlts = (dataTT.timestamps/100).astype('int32')
         #nlts = np.round(dataTT.timestamps.astype(float)/100).astype('int32')
+        nlts = np.ceil(dataTT.timestamps.astype(float)/100).astype('int32')
         # NOTE: nlts[45] a many others have to rounded to match MClust value
         # NOTE: compare ts[163] and nlts[1202]. MClust and numpy round numbers differently!
         #       dataTT.timestamps[1202]=409680450    ts[163]=4096805
         
         clusterAssignment = np.zeros(nlts.shape,dtype='int')
+        sorted_index = np.searchsorted(nlts,ts,'left')
+        clusterAssignment[sorted_index]=1
+        '''
+        TEST:
+        nlts[clusterAssignment.astype(bool)]
+        ts
+        '''
+        
+        '''
         for ind,onets in enumerate(ts):
-            spikeMatch = abs(nlts-onets)<2 # Needed because of rounding issue
+            #spikeMatch = abs(nlts-onets)<2 # Needed because of rounding issue
+            #valdiff = nlts-onets
+            spikeMatch = nlts==onets
             #spikeMatch = (nlts==onets)
             #if not any(spikeMatch): break
             clusterAssignment = clusterAssignment + spikeMatch
             # NOTE: faster than using flatnonzero and assigning that index
+        '''
         '''
         Verify sizes:
         len(ts)
@@ -151,4 +172,24 @@ if __name__ == "__main__":
         tetrodeFile = '/home/sjara/tmp/mclustdata/TT7.ntt'
         outputFilename = '/tmp/TT7.clu.1'
         clu = tfiles_to_clu(tFiles,tetrodeFile,outputFilename)
+    elif CASE==3:
+        tFiles = ['/home/sjara/tmp/mclustdata/TT7_2.t']
+        tetrodeFile = '/home/sjara/tmp/mclustdata/TT7.ntt'
+        clu = tfiles_to_clu(tFiles,tetrodeFile)
 
+'''
+import numpy as np
+x = np.array([3,5,7,1,9,8,6,6])
+y = np.array([2,1,5,10,100,6])
+
+index = np.argsort(x)
+sorted_x = x[index]
+sorted_index = np.searchsorted(sorted_x, y)
+
+yindex = np.take(index, sorted_index, mode="clip")
+mask = x[yindex] != y
+
+result = np.ma.array(yindex, mask=mask)
+print result
+[-- 3 1 -- -- 6]
+'''
