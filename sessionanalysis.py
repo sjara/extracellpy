@@ -400,6 +400,51 @@ def trials_by_condition(behavData,CONDCASE=1,sortby=np.empty(0),outcome='all',se
                 g3 = np.flatnonzero(npAND(g3part,behavData.trialsEachBlock[:,3]))
                 g2 = np.flatnonzero(npAND(g2part,behavData.trialsEachBlock[:,2]))
                 g4 = np.flatnonzero(npAND(g2part,behavData.trialsEachBlock[:,4]))
+        elif outcome=='correctPerBlockAll':
+            behavData.find_trials_each_block() # BAD CODING: changing object obscurely
+            g1part = behavData.lowFreqs & behavData.leftReward & behavData.correct & selected
+            g2part = behavData.lowFreqs & behavData.rightReward & behavData.correct & selected
+            g3part = behavData.highFreqs & behavData.leftReward & behavData.correct & selected
+            g4part = behavData.highFreqs & behavData.rightReward & behavData.correct & selected
+            if np.mean(behavData.lowFreqs[:10])>np.mean(behavData.highFreqs[:10]):
+                trialsEachCondLabels = ['6','14kHz (R)','14kHz (L)','31',
+                                        '6','14kHz (R)','14kHz (L)','31',
+                                        '6','14kHz (R)','14kHz (L)','31',
+                                        '6','14kHz (R)','14kHz (L)','31']
+                colorEachCond = [cp.TangoPalette['Orange2'], cp.TangoPalette['ScarletRed1'],
+                                 cp.TangoPalette['Orange2'], cp.TangoPalette['ScarletRed1']]
+                #g1part = npAND(npAND(behavData.lowFreqs,behavData.leftReward),behavData.correct)
+                #g2part = npAND(npAND(behavData.lowFreqs,behavData.rightReward),behavData.correct)
+                #g3part = npAND(npAND(behavData.highFreqs,behavData.leftReward),behavData.correct)
+                #g4part = npAND(npAND(behavData.highFreqs,behavData.rightReward),behavData.correct)
+                g1 = np.flatnonzero((g1part & behavData.trialsEachBlock[:,1]))
+                g2=g1; g3=g1; g4=g1;
+                print ('WARNING: this section is NOT FINISHED!')
+                '''
+                g1 = np.flatnonzero(npAND(g2part,behavData.trialsEachBlock[:,1]))
+                g3 = np.flatnonzero(npAND(g2part,behavData.trialsEachBlock[:,3]))
+                g2 = np.flatnonzero(npAND(g3part,behavData.trialsEachBlock[:,2]))
+                g4 = np.flatnonzero(npAND(g3part,behavData.trialsEachBlock[:,4]))
+                '''
+            else:
+                trialsEachCondLabels = ['14kHz (L)','31','6','14kHz (R)',
+                                        '14kHz (L)','31','6','14kHz (R)',
+                                        '14kHz (L)','31','6','14kHz (R)',
+                                        '14kHz (L)','31','6','14kHz (R)']
+                colorEachCond = [cp.TangoPalette['ScarletRed1'], cp.TangoPalette['Orange2'],
+                                 cp.TangoPalette['ScarletRed1'], cp.TangoPalette['Orange2']]
+                #g1part = npAND(npAND(behavData.lowFreqs,behavData.leftReward),npNOT(behavData.early))
+                #g2part = npAND(npAND(behavData.lowFreqs,behavData.rightReward),npNOT(behavData.early))
+                #g3part = npAND(npAND(behavData.highFreqs,behavData.leftReward),npNOT(behavData.early))
+                #g4part = npAND(npAND(behavData.highFreqs,behavData.rightReward),npNOT(behavData.early))
+                g1 = np.flatnonzero((g3part & behavData.trialsEachBlock[:,1]))
+                g2 = np.flatnonzero((g4part & behavData.trialsEachBlock[:,1]))
+                g3 = np.flatnonzero((g1part & behavData.trialsEachBlock[:,2]))
+                g4 = np.flatnonzero((g2part & behavData.trialsEachBlock[:,2]))
+                g5 = np.flatnonzero((g3part & behavData.trialsEachBlock[:,3]))
+                g6 = np.flatnonzero((g4part & behavData.trialsEachBlock[:,3]))
+                g7 = np.flatnonzero((g1part & behavData.trialsEachBlock[:,4]))
+                g8 = np.flatnonzero((g2part & behavData.trialsEachBlock[:,4]))
         else:
             g1 = np.flatnonzero(npAND(behavData.lowFreqs,behavData.leftReward))
             g2 = np.flatnonzero(npAND(behavData.lowFreqs,behavData.rightReward))
@@ -415,7 +460,12 @@ def trials_by_condition(behavData,CONDCASE=1,sortby=np.empty(0),outcome='all',se
             g3 = g3[np.argsort(sortby[g3])]
             g4 = g4[np.argsort(sortby[g4])]
 
-        trialsEachCond = [g1,g2,g3,g4]
+        try:
+            trialsEachCond = [g1,g2,g3,g4,g5,g6,g7,g8]
+        except:
+            print 'Less than 4 blocks'
+            trialsEachCond = [g1,g2,g3,g4]
+        
         nTrialsEachCond = [len(x) for x in trialsEachCond]
         nCond = len(nTrialsEachCond)
         indsEachCond = [np.arange(nTrialsEachCond[0])]
@@ -459,24 +509,29 @@ def align_to_event(behavData,CASE):
         eventOfInterest = behavData.sideInTime - \
                           behavData.trialStartTime + \
                           behavData.trialStartTimeEphys
-        '''
     elif CASE==4:
+        xLabelStr = 'Time from center port in'
+        eventOfInterest = behavData.centerInTime - \
+                          behavData.trialStartTime + \
+                          behavData.trialStartTimeEphys
+        '''
+    elif CASE==5:
         xLabelStr = 'UNSORTED Time from side port in'
         eventOfInterest = behavData.sideInTime - \
                           behavData.trialStartTime + \
                           behavData.trialStartTimeEphys
-    elif CASE==5:
+    elif CASE==6:
         xLabelStr = 'UNSORTED Time from center poke out'
         eventOfInterest = behavData.centerOutTime - \
                           behavData.trialStartTime + \
                           behavData.trialStartTimeEphys
-    elif CASE==6:
+    elif CASE==7:
         xLabelStr = 'UNSORTED Time from sound onset (ms)'
         '''
     return (eventOfInterest,xLabelStr)
     
 def save_data_each_cell(cellDB,outputDir,timeRange=np.array([-0.3,0.9]),lockTo=1):
-    allPostfix = {1:'SoundOn',2:'Cout',3:'SideIn'} ### FIXME: HARDCODED !!!
+    allPostfix = {1:'SoundOn',2:'Cout',3:'SideIn',4:'Cin'} ### FIXME: HARDCODED !!!
     for indcell,onecell in enumerate(cellDB):
         #cellStr = '%s_%s_T%dc%d'%(onecell.animalName, onecell.ephysSession,
         #                          onecell.tetrode, onecell.cluster)

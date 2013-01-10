@@ -469,7 +469,7 @@ class TuningBehaviorData(BehaviorData):
 
 
 if __name__ == "__main__":
-    CASE = 2
+    CASE = 3
     if CASE==1:
         behavFile = '/var/data/BControlData/Data/santiago/saja100/data_saja_tuningcurve_santiago_saja100_20111119a.h5'
         behavData = BehaviorData(behavFile)
@@ -488,8 +488,17 @@ if __name__ == "__main__":
         indexValid[~validEachBlock] = -1
         #    behavData.trialsEachBlock*
         '''
-
-
+    elif CASE==3:
+        from pylab import *
+        behavFile = '/var/data/BControlData/Data/santiago/saja142/data_saja_reversal_santiago_saja142_20121120a.h5'
+        behavData = ReversalBehaviorData(behavFile)
+        clf()
+        plot(behavData['HitHistory'],'o',mfc='none',mec='b')
+        plot(behavData['CurrentBlock'],'o',mfc='none',mec='r')
+        plot(behavData['TargetFreq']/30000,'o',mfc='none',mec='g')
+        draw()
+        show()
+        
 '''
 behavFile = '/var/data/BControlData/Data/santiago/saja100/data_saja_tuningcurve_santiago_saja100_20111103a.h5'
 reload(loadbehavior)

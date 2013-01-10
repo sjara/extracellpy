@@ -137,3 +137,35 @@ def moving_average_masked(myarray,winsize,sem=False):
         return (valMean,valSEM)
     else:
         return valMean
+
+
+def moving_average_masked_acausal(myarray,winsize,sem=False):
+    '''
+    Moving average that works with masked arrays (of multiple rows).
+    marray is R x n
+    For each point, the average is taken over all elements in columns inside a moving window.
+    The calculation is acausal so the last elements of the result are the mean
+    over less samples than nsamples.
+    '''
+    if len(myarray.shape)==1:
+        marray=np.ma.masked_array(myarray[np.newaxis,:])
+    else:
+        marray = np.ma.masked_array(myarray)
+    (nRepeats, nSamples) = marray.shape
+    valMean = np.ma.empty(nSamples,dtype='float')
+    valSEM = np.ma.empty(nSamples,dtype='float')
+    for indi in range(nSamples-winsize):
+        thisChunk = marray[:,indi:indi+winsize]
+        valMean[indi] = thisChunk.mean()
+        if sem:
+            valSEM[indi] = thisChunk.std()/np.sqrt(thisChunk.count())
+    for indi in range(nSamples-winsize+1,nSamples):
+        thisChunk = marray[:,indi:nSamples]
+        valMean[indi] = thisChunk.mean()
+        if sem:
+            valSEM[indi] = thisChunk.std()/np.sqrt(thisChunk.count())
+    if sem:
+        return (valMean,valSEM)
+    else:
+        return valMean
+    

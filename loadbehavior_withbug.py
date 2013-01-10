@@ -70,6 +70,41 @@ class ReversalBehaviorData(loadbehavior.ReversalBehaviorData):
         self['ProbeDuration'] = self['ProbeDuration'][0:-1]
         self['DelayToTarget'] = self['DelayToTarget'][0:-1]
         self['TargetDuration'] = self['TargetDuration'][0:-1]
+    def extract_event_times(self):
+        # NOTE: ActionLabels does not have correct labels (Cin=1, Cout=2, ...)
+        #       Maybe BControl's get_col_labels(current_assembler) is wrong.
+        #       so instead, here are the definitions for each rig.
+        rig = self['HostName']
+        if rig in ['lermontov','peter']:
+            # -- Peter's rig --
+            centerPokeInID  = 1 ### WARNING!!! HARDCODED
+            centerPokeOutID = 2 ### WARNING!!! HARDCODED
+            leftPokeInID    = 4 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
+            rightPokeInID   = 16 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
+            #leftPokeInID    = 16 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
+            #rightPokeInID   = 4 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
+        elif rig in ['cnmcx','cnmc5','cnmc6','cnmc7','cnmc8','cnmc10','cnmc11','cnmc12']:
+            # -- Most rigs (and old Linux state machine) --
+            centerPokeInID = 0 ### WARNING!!! HARDCODED
+            centerPokeOutID = 1 ### WARNING!!! HARDCODED
+            leftPokeInID    = 4 ### WARNING!!! HARDCODED
+            rightPokeInID   = 16 ### WARNING!!! HARDCODED
+        elif rig in ['cnmc9']:
+            # -- Santiago's rig (with newer Linux state machine) --
+            # Except that back in the day, it was not different that the others
+            centerPokeInID = 0 ### WARNING!!! HARDCODED
+            centerPokeOutID = 1 ### WARNING!!! HARDCODED
+            leftPokeInID    = 4#2 ### WARNING!!! HARDCODED
+            rightPokeInID   = 16# ### WARNING!!! HARDCODED
+        else:
+            raise ValueError('Rig number not defined')
+        self.trialStartTime = self.time_of_state_transition('state_0','send_trial_info')
+        #self.trialStartTime = self.time_of_state_transition(16,'send_trial_info')
+        self.targetOnsetTime = self.time_of_state_transition('delay_period','play_target')
+        self.centerInTime = self.time_of_event('wait_for_cpoke',centerPokeInID)
+        self.centerOutTime = self.time_of_event('wait_for_apoke',centerPokeOutID)
+        self.leftInTime = self.time_of_event('wait_for_apoke',leftPokeInID)
+        self.rightInTime = self.time_of_event('wait_for_apoke',rightPokeInID)
 
 
 
@@ -101,14 +136,43 @@ class OLD_ReversalBehaviorData(loadbehavior.BehaviorData):
         self['DelayToTarget'] = self['DelayToTarget'][0:-1]
         self['TargetDuration'] = self['TargetDuration'][0:-1]
     def extract_event_times(self):
+        '''
         # NOTE: ActionLabels does not have correct labels (Cin=1, Cout=2, ...)
         #       Maybe BControl's get_col_labels(current_assembler) is wrong.
         centerPokeOutID = 1 ### WARNING!!! HARDCODED
         leftPokeInID    = 2 ### WARNING!!! HARDCODED
         rightPokeInID   = 4 ### WARNING!!! HARDCODED
+        '''
+        # NOTE: ActionLabels does not have correct labels (Cin=1, Cout=2, ...)
+        #       Maybe BControl's get_col_labels(current_assembler) is wrong.
+        #       so instead, here are the definitions for each rig.
+        rig = self['HostName']
+        if rig in ['lermontov','peter']:
+            # -- Peter's rig --
+            centerPokeInID  = 1 ### WARNING!!! HARDCODED
+            centerPokeOutID = 2 ### WARNING!!! HARDCODED
+            leftPokeInID    = 4 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
+            rightPokeInID   = 16 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
+            #leftPokeInID    = 16 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
+            #rightPokeInID   = 4 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
+        elif rig in ['cnmcx','cnmc5','cnmc6','cnmc7','cnmc8','cnmc10','cnmc11','cnmc12']:
+            # -- Most rigs (and old Linux state machine) --
+            centerPokeInID = 0 ### WARNING!!! HARDCODED
+            centerPokeOutID = 1 ### WARNING!!! HARDCODED
+            leftPokeInID    = 4 ### WARNING!!! HARDCODED
+            rightPokeInID   = 16 ### WARNING!!! HARDCODED
+        elif rig in ['cnmc9']:
+            # -- Santiago's rig (with newer Linux state machine) --
+            centerPokeInID = 0 ### WARNING!!! HARDCODED
+            centerPokeOutID = 1 ### WARNING!!! HARDCODED
+            leftPokeInID    = 4#2 ### WARNING!!! HARDCODED
+            rightPokeInID   = 16#4 ### WARNING!!! HARDCODED
+        else:
+            raise ValueError('Rig number not defined')
         self.trialStartTime = self.time_of_state_transition('state_0','send_trial_info')
         #self.trialStartTime = self.time_of_state_transition(16,'send_trial_info')
         self.targetOnsetTime = self.time_of_state_transition('delay_period','play_target')
+        self.centerInTime = self.time_of_event('wait_for_cpoke',centerPokeInID)
         self.centerOutTime = self.time_of_event('wait_for_apoke',centerPokeOutID)
         self.leftInTime = self.time_of_event('wait_for_apoke',leftPokeInID)
         self.rightInTime = self.time_of_event('wait_for_apoke',rightPokeInID)

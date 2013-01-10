@@ -121,7 +121,10 @@ def rasterplot(spikeTimesFromEventOnset,indexLimitsEachTrial,timeRange,trialsEac
         trialsEachCond = [np.arange(indexLimitsEachTrial.shape[1])]
     else:
         nCond = len(trialsEachCond)
-    
+
+    #if xlims==[]:,xlims=[]
+        #xlims = timeRange
+        
     if colorEachCond is None:
         colorEachCond = ['0.5']*nCond
         #colorEachCond = ['0.5']*nCond
@@ -163,9 +166,10 @@ def rasterplot(spikeTimesFromEventOnset,indexLimitsEachTrial,timeRange,trialsEac
         hcond.extend(plt.fill(xpos,ypos,ec='none',fc=colorEachCond[indcond]))
         hcond.extend(plt.fill(xpos+np.diff(timeRange)-fillWidth,ypos,ec='none',fc=colorEachCond[indcond]))
     plt.hold(False)
+    plt.xlim(timeRange)
     return(pRaster,hcond)
 
-def plot_psth(PSTH,smoothWinSize,binsStartTime,colorEachCond=None,linewidth=3):
+def plot_psth(PSTH,smoothWinSize,binsStartTime,colorEachCond=None,linestyle=None,linewidth=3):
     import matplotlib.pyplot as plt
     from scipy.signal import hanning
     winShape = np.ones(smoothWinSize) # Square
@@ -174,11 +178,13 @@ def plot_psth(PSTH,smoothWinSize,binsStartTime,colorEachCond=None,linewidth=3):
     nCond = PSTH.shape[0]
     if colorEachCond is None:
         colorEachCond = ['0.5']*nCond
+    if linestyle is None:
+        linestyle = ['-']*nCond
     pPSTH = []
     for (indc,thisPSTH) in enumerate(PSTH):
         smoothPSTH = np.convolve(thisPSTH,winShape,mode='same')
         sSlice = slice(0,len(smoothPSTH),50) # 50
-        ph, = plt.plot(1e3*binsStartTime[sSlice],smoothPSTH[sSlice],'-')
+        ph, = plt.plot(1e3*binsStartTime[sSlice],smoothPSTH[sSlice],ls=linestyle[indc])
         pPSTH.append(ph)
         pPSTH[-1].set_linewidth(linewidth)
         pPSTH[-1].set_color(colorEachCond[indc])    
@@ -317,7 +323,7 @@ def plot_scatter_groups(data,pValue,color='None',axlims=None,fontsize=12,pSignif
     plt.draw()
     plt.show()
 
-def significance_stars(xRange,yPos,yLength,nStars=1,starColor='k',starMarker='*',gapFactor=0.1):
+def significance_stars(xRange,yPos,yLength,nStars=1,starColor='k',starMarker='*',starSize=8,gapFactor=0.1):
     plt.hold(True) # FIXME: Use holdState
     xGap = gapFactor*nStars
     xVals = [xRange[0],xRange[0], 
@@ -325,11 +331,13 @@ def significance_stars(xRange,yPos,yLength,nStars=1,starColor='k',starMarker='*'
              np.mean(xRange)+xGap*np.diff(xRange),
              xRange[1],xRange[1]]
     yVals = [yPos-yLength, yPos, yPos, np.nan, yPos, yPos, yPos-yLength]
-    plt.plot(xVals,yVals,color=starColor)
+    hlines, = plt.plot(xVals,yVals,color=starColor)
+    hlines.set_clip_on(False)
     xPosStar = [] # FINISH THIS! IT DOES NOT WORK WITH nStars>1
     hs, = plt.plot(np.mean(xRange),np.tile(yPos,nStars),
                    starMarker,color=starColor,mec=starColor)
-    hs.set_markersize(8)
+    hs.set_markersize(starSize)
+    hs.set_clip_on(False)
     plt.hold(False)
     
 

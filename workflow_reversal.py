@@ -71,8 +71,24 @@ def behavior_summary(animalsNames,sessionList,trialslim=[],outputDir=''):
         fullFileName = os.path.join(outputDir,filename)
         print 'saving figure to %s'%fullFileName
         plt.gcf().savefig(fullFileName,format=figformat)
+
         
+def load_cells_database(animalsNames):
+    '''
+    Load and append cell definitions from multiple animals.
+    '''
+    # -- Load list of cells --
+    sys.path.append(settings.CELL_LIST_PATH)
+    cellDB = celldatabase.CellDatabase()
+    for animalName in animalsNames:
+        dataModule = 'allcells_%s'%(animalName)
+        allcells = __import__(dataModule)
+        reload(allcells)
+        cellDB.extend(allcells.cellDB)
+    return cellDB
     
+
+
 def save_freqtuning_plots(animalName,copytogether=True):
     # -- Load list of cells --
     sys.path.append(settings.CELL_LIST_PATH)
@@ -179,7 +195,28 @@ def load_summary_spike_shape(animalsNames):
     spikeshapeData = np.load(spkFileName)
     return (spikeshapeData,cellDB)
     
-        
+
+def show_one_raster(animalName,ephysSession,behavSession,tetrode,cluster,timeRange,lockedTo='SoundOn'):
+    ######## FINISH THIS ############
+    allPostfix = {1:'SoundOn',2:'Cout',3:'SideIn'} ### FIXME: HARDCODED !!!
+    
+    onecell = celldatabase.CellInfo(animalName, ephysSession,behavSession, tetrode, cluster,
+                                    trialsToExclude=[])
+    cellStr = str(onecell).replace(' ','_')
+    try:
+        (behavData,trialEvents,dataTT,spikeInds) = load_cell_reversal(onecell)
+    except IOError:
+        print 'WARNING: File not found for cell %s'%cellStr
+    (eventOfInterest,xLabelStr) = align_to_event(behavData,lockTo)
+    # -- Ignore trialsToExclude --
+    eventOfInterest[onecell.trialsToExclude] = np.nan
+    ##if len(onecell.trialsToExclude)>0:
+    (spikeTimesFromEventOnset,trialIndexForEachSpike,indexLimitsEachTrial) = \
+        spikesanalysis.eventlocked_spiketimes(dataTT.timestamps[spikeInds],
+                                              eventOfInterest,timeRange)
+    
+    pass
+
 def save_raster_data(animalName,lockedTo='SoundOn'):
     '''
     Save spike times aligned to a task event.
@@ -214,15 +251,19 @@ def save_raster_data(animalName,lockedTo='SoundOn'):
             timeRange = np.array([-0.3,0.9]) #sec
             allcells.cellDB.save_locked_spikes(outputDir,timeRange=timeRange,lockTo=2)
         elif oneLock=='SideIn':
-            timeRange = np.array([-0.6,0.6]) #sec
-            #timeRange = np.array([-0.5,2]) #sec
+            timeRange = np.array([-0.6,0.6]) #sec (USE THIS ONE)
+            #timeRange = np.array([-2,3]) #sec
+            ###timeRange = np.array([-0.5,2]) #sec
             allcells.cellDB.save_locked_spikes(outputDir,timeRange=timeRange,lockTo=3)
+        elif oneLock=='Cin':
+            timeRange = np.array([-0.3,0.9]) #sec
+            allcells.cellDB.save_locked_spikes(outputDir,timeRange=timeRange,lockTo=4)
 
 def save_raster_plots(animalName,lockedTo='SoundOn',groupedBy='4cond',cellDB=None):
     '''
     Parameters
     ----------
-    lockedTo: ['SoundOn', 'Cout', 'SideIn']
+    lockedTo: ['SoundOn', 'Cout', 'SideIn','Cin']
     groupedBy: string. Either '4cond','outcome'
     '''
     # -- Load list of cells --
@@ -485,20 +526,9 @@ def plot_zscores_response(animalName,lockedTo='SoundOn'):
         plt.waitforbuttonpress()
 
 
-def load_cells_database(animalsNames):
-    '''
-    Load and append cell definitions from multiple animals.
-    '''
-    # -- Load list of cells --
-    sys.path.append(settings.CELL_LIST_PATH)
-    cellDB = celldatabase.CellDatabase()
-    for animalName in animalsNames:
-        dataModule = 'allcells_%s'%(animalName)
-        allcells = __import__(dataModule)
-        reload(allcells)
-        cellDB.extend(allcells.cellDB)
-    return cellDB
-    
+
+        
+
 
 def save_summary_responsiveness(animalsNames,zThreshold=3,responseRange=[0,0.150]):
     '''
@@ -610,7 +640,157 @@ def list_responsive(animalsNames,freq='mid'):
     soundResponsive = rdata['responsiveMidFreq']
     for cellstr in rdata['strEachCell'][soundResponsive]:
         print cellstr
+
+
+def save_evoked_response(animalName,lockedTo='SoundOn'):
+    '''Save spike count for spontaneous and evoked periods.
+       Returns mean of spike counts (with shape [nPeriods,nCond] ) '''
     
+    ###responseRanges = [[-0.10,-0.05], [-0.05,0] , [0.01,0.06] , [0.06,0.110] , [0.110,0.160]]
+    responseRanges = [[-0.10,-0.05], [-0.05,0] , [0.02,0.07] , [0.07,0.120] , [0.120,0.170], [0.300,0.400]]
+
+    # -- Load list of cells --
+    sys.path.append(settings.CELL_LIST_PATH)
+    dataModule = 'allcells_%s'%(animalName)
+    allcells = __import__(dataModule)
+    reload(allcells)
+    dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
+    dataDir = os.path.join(dataPath,'lockedTo%s'%(lockedTo))
+    outputDir = os.path.join(dataPath,'evoked_response_%s'%lockedTo)
+    
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+
+    nCells = len(allcells.cellDB)
+    prevSession = ''
+    for indcell,onecell in enumerate(allcells.cellDB):
+        cellStr = str(onecell).replace(' ','_')
+        fileName = os.path.join(dataDir,cellStr+'_'+lockedTo+'.npz')
+        if not os.path.exists(fileName):
+            print 'File does not exist: %s'%fileName
+            continue
+        #ephysData = np.load(fileName)
+        # -- Open file manually. Workaround for bug in numpy --
+        fileObj = open(fileName,'rb')
+        ephysData = np.load(fileObj)
+
+        spikeTimesFromEventOnset = ephysData['spikeTimesFromEventOnset']
+        indexLimitsEachTrial = ephysData['indexLimitsEachTrial']
+
+        # -- Load behavior --
+        if ephysData['behavSession']==prevSession:
+            print 'Behavior already loaded (%s)'%cellStr
+        else:
+            print 'Loading %s [%s] - %s'%(ephysData['animalName'],ephysData['behavSession'],cellStr)
+            behavData = sessionanalysis.load_behavior_session(ephysData['animalName'],
+                                                              ephysData['behavSession'])
+            prevSession = ephysData['behavSession']
+            
+        selectedTrials = np.ones(behavData['nTrials'],dtype=bool)
+        selectedTrials[onecell.trialsToExclude] = False
+        (trialsEachCond,condInfo) = sessionanalysis.trials_by_condition(behavData,1,
+                                                                        outcome='correct',
+                                                                        selected=selectedTrials)
+        # -- Add one condition with all trials with midFreq --
+        trialsMidFreqRightRew = trialsEachCond[condInfo['trialsEachCondLabels']['MidFreq:RightReward']]
+        trialsMidFreqLeftRew = trialsEachCond[condInfo['trialsEachCondLabels']['MidFreq:LeftReward']]
+        trialsEachCond.append(np.concatenate((trialsMidFreqRightRew,trialsMidFreqLeftRew)))
+        condInfo['trialsEachCondLabels']['MidFreq:Combined']=len(trialsEachCond)-1
+
+        nCond = len(trialsEachCond)
+        nRanges = len(responseRanges)
+
+        meanSpikes = np.empty((nRanges,nCond))
+        nTrialsEachCond = np.empty((nRanges,nCond),dtype='int')
+        
+        for indCond in range(nCond):
+            for indRange,thisRange in enumerate(responseRanges):
+                nspkResp=spikesanalysis.count_spikes_in_range(spikeTimesFromEventOnset,
+                                               indexLimitsEachTrial[:,trialsEachCond[indCond]],
+                                               thisRange)
+                meanSpikes[indRange,indCond] = np.mean(nspkResp)
+                nTrialsEachCond[indCond] = len(nspkResp)
+
+        outputFileName = os.path.join(outputDir,'evoked_resp_'+cellStr+'_'+lockedTo+'.npz')
+        np.savez(outputFileName,responseRanges=np.array(responseRanges),
+                 meanSpikes=meanSpikes, nTrialsEachCond=nTrialsEachCond,
+                 trialsEachCondLabels=condInfo['trialsEachCondLabels'],cellInfo=onecell,
+                 colorEachCond=condInfo['colorEachCond'])
+        fileObj.close()
+
+        
+def save_summary_evoked(animalsNames):
+    '''
+    Load evoked response for all cells and combine into one file.
+    Results are saved in settings.PROCESSED_REVERSAL_PATH
+      where %s is replaced by 'all'.
+    '''
+    lockedTo = 'SoundOn'
+    
+    cellDB = load_cells_database(animalsNames)
+
+    # -- Load first cell to get dimensions of data --
+    onecell = cellDB[0]
+    cellStr = str(onecell).replace(' ','_')
+    dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+    dataDir = os.path.join(dataPath,'evoked_response_%s'%lockedTo)
+    respData = np.load(os.path.join(dataDir,'evoked_resp_'+cellStr+'_'+lockedTo+'.npz'))
+    nCells = len(cellDB)
+    [nRanges,nCond] = respData['meanSpikes'].shape
+    meanSpikes = respData['meanSpikes']
+    responseRanges = respData['responseRanges']
+    meanSpikesEachCell = np.empty((nRanges,nCond,nCells))
+    strEachCell = []
+
+    # NOTE: there is a bug in numpy that gives the error "Too many files open"
+    #       when looping opening npz files. That is why files are open and closed
+    #       manually.
+    #       http://projects.scipy.org/numpy/attachment/ticket/1517/numpy_bug.py
+    print 'Loading all zscores... ',
+    for indcell,onecell in enumerate(cellDB):
+        dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+        dataDir = os.path.join(dataPath,'evoked_response_%s'%lockedTo)
+        cellStr = str(onecell).replace(' ','_')
+        fileName = os.path.join(dataDir,'evoked_resp_'+cellStr+'_'+lockedTo+'.npz')
+        #zScoreData = np.load(fileName)
+        # -- Open file manually. Workaround for bug in numpy --
+        fileObj = open(fileName,'rb')
+        respData = np.load(fileObj)
+        meanSpikesEachCell[:,:,indcell] = respData['meanSpikes'].copy()
+        if indcell==0:
+            responseRanges = respData['responseRanges']
+            colorEachCond = respData['colorEachCond']
+            trialsEachCondLabels=respData['trialsEachCondLabels']
+        fileObj.close()
+        strEachCell.append(cellStr)
+    print 'done!'
+
+    strAllAnimals = '-'.join(animalsNames)
+    outputDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+    outputFileName = os.path.join(outputDir,'summary_evoked_%s_%s.npz'%(strAllAnimals,lockedTo))
+    print 'Saving summary to %s'%outputFileName
+    np.savez(outputFileName,meanSpikesEachCell=meanSpikesEachCell,
+             responseRanges=responseRanges,strEachCell=strEachCell,
+             trialsEachCondLabels=trialsEachCondLabels)
+    pass
+    
+
+def load_summary_evoked(animalsNames,lockedTo='SoundOn'):
+    ''' 
+    Load summary of evoked responses.
+    '''
+    cellDB = load_cells_database(animalsNames)
+    strAllAnimals = '-'.join(animalsNames)
+    dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    evokedFileName = os.path.join(dataDir,'summary_evoked_%s_%s.npz'%(strAllAnimals,lockedTo))
+    evokedData = np.load(evokedFileName)
+    return (evokedData,cellDB)
+
+
 def show_heatmap_response(animalsNames,showall=False):
     '''See also test104_heatmap_manycells.py '''
 
@@ -654,12 +834,13 @@ def show_heatmap_response(animalsNames,showall=False):
 def save_zscores_modulation(animalName,lockedTo='SoundOn'):
     '''
     Calculate z-scores between midFreq-Right and midFreq-Left
+    (a positive z-score means midR > midL)
     Data directories are defined in .../extracellpy/settings.py
 
     Parameters
     ----------
     animalName: string. Name of animal.For example 'saja000'
-    lockedTo  : string. Tested for 'SoundOn' and 'Cout'.
+    lockedTo  : string. 'SoundOn', 'Cout' or 'SideIn'
 
 
     TO DO:
@@ -675,6 +856,9 @@ def save_zscores_modulation(animalName,lockedTo='SoundOn'):
     elif lockedTo=='Cout':
         responseRange = [0.000,0.250] # w.r.t Cout
         #responseRange = [0.150,0.400] # w.r.t SoundOn
+    elif lockedTo=='SideIn':
+        ###responseRange = [0.050,0.200] # w.r.t SideIn
+        responseRange = [0.100,0.300] # w.r.t SideIn
 
     # -- Load list of cells --
     sys.path.append(settings.CELL_LIST_PATH)
@@ -1632,7 +1816,10 @@ def save_zscores_byoutcome(animalName,lockedTo='SoundOn'):
         responseRange = [0.010,0.150]
     elif lockedTo=='Cout':
         responseRange = [0.000,0.250] # w.r.t Cout
-        #responseRange = [0.150,0.400] # w.r.t SoundOn
+        ###responseRange = [0.150,0.400] # w.r.t SoundOn
+    elif lockedTo=='SideIn':
+        ###responseRange = [0.050,0.200] # w.r.t SideIn
+        responseRange = [0.100,0.300] # w.r.t SideIn
 
     # -- Load list of cells --
     sys.path.append(settings.CELL_LIST_PATH)
@@ -1666,9 +1853,9 @@ def save_zscores_byoutcome(animalName,lockedTo='SoundOn'):
             trialsMidFreq = (behavData['TargetFreq']==behavData['FreqMid'][-1])
             prevSession = ephysData['behavSession']
         # -- Find modulation for all blocks merged --
-        eachCondLabel = ['RightwardChoice','LeftwardChoice']
         validMidFreq = trialsMidFreq & ~behavData.early
         validMidFreq[onecell.trialsToExclude] = False
+        eachCondLabel = ['RightwardChoice','LeftwardChoice']
         validEachCond = np.c_[behavData.rightChoice,behavData.leftChoice]
 
         trialsToCompare = validEachCond & validMidFreq[:,np.newaxis]
@@ -1686,11 +1873,34 @@ def save_zscores_byoutcome(animalName,lockedTo='SoundOn'):
         nTrialsLowBound = np.sum(trialsToCompareLowBound,axis=0)
         nTrialsHighBound = np.sum(trialsToCompareHighBound,axis=0)
 
+        # -- Compare correct in one block with error in the other --
+        ###eachCondLabel = ['Correct','Error']
+        trialsToCompareRightChoice = np.c_[behavData.rightChoice & validMidFreq & behavData.lowFreqs,
+                                           behavData.rightChoice & validMidFreq & behavData.highFreqs]
+        trialsToCompareLeftChoice = np.c_[behavData.leftChoice & validMidFreq & behavData.lowFreqs,
+                                           behavData.leftChoice & validMidFreq & behavData.highFreqs]
+        (meanRespEachBoundRight,pValueModRight) = \
+            spikesanalysis.evaluate_modulation(ephysData['spikeTimesFromEventOnset'],
+                                               ephysData['indexLimitsEachTrial'],
+                                               responseRange,list(trialsToCompareRightChoice.T))
+        (meanRespEachBoundLeft,pValueModLeft) = \
+            spikesanalysis.evaluate_modulation(ephysData['spikeTimesFromEventOnset'],
+                                               ephysData['indexLimitsEachTrial'],
+                                               responseRange,list(trialsToCompareLeftChoice.T))
+        nTrialsRightChoice = np.sum(trialsToCompareRightChoice,axis=0)
+        nTrialsLeftChoice = np.sum(trialsToCompareLeftChoice,axis=0)
+        
+
         meanRespEachCond = np.vstack((meanRespEachCondLowBound,meanRespEachCondHighBound)) #Each row is one block-type
+        meanRespEachChoice = np.vstack((meanRespEachBoundRight,meanRespEachBoundLeft)) #Each row is one choice-type
         blockTypeLabel = ['LowBound','HighBound']
         blockType = np.array([0,1])
+        choiceTypeLabel = ['RightChoice','LeftChoice']
+        choiceType = np.array([0,1])
         pValueMod = np.hstack((pValueModLowBound,pValueModHighBound))
         nTrialsEachCond = np.vstack((nTrialsLowBound,nTrialsHighBound))
+        pValueModChoice = np.hstack((pValueModRight,pValueModLeft))
+        nTrialsEachChoice = np.vstack((nTrialsRightChoice,nTrialsLeftChoice))
 
         #meanRespEachCondLowBound=meanRespEachCondLowBound, pValueModLowBound=pValueModLowBound,
         #meanRespEachCondHighBound=meanRespEachCondHighBound,pValueModHighBound=pValueModHighBound,
@@ -1702,7 +1912,11 @@ def save_zscores_byoutcome(animalName,lockedTo='SoundOn'):
                  eachCondLabel=eachCondLabel,
                  blockType=blockType,blockTypeLabel=blockTypeLabel,
                  nTrialsEachCond=nTrialsEachCond,
-                 pValueMod=pValueMod)
+                 pValueMod=pValueMod,
+                 meanRespEachChoice=meanRespEachChoice,
+                 choiceType=choiceType,choiceTypeLabel=choiceTypeLabel,
+                 nTrialsEachChoice=nTrialsEachChoice,
+                 pValueModChoice=pValueModChoice)
 
 def save_summary_byoutcome(animalsNames,lockedTo='SoundOn'):
     '''
@@ -1723,6 +1937,10 @@ def save_summary_byoutcome(animalsNames,lockedTo='SoundOn'):
     nTrialsEachCond = np.empty((2*nCells,2),dtype=int)
     blockType = np.empty(2*nCells,dtype=int)
     pValueMod = np.empty(2*nCells,dtype=float)
+    meanRespEachChoice = np.empty((2*nCells,2),dtype=float)
+    nTrialsEachChoice = np.empty((2*nCells,2),dtype=int)
+    choiceType = np.empty(2*nCells,dtype=int)
+    pValueModChoice = np.empty(2*nCells,dtype=float)
     cellIDeachType = np.empty(2*nCells,dtype=int)
     strEachCell = []
 
@@ -1739,6 +1957,10 @@ def save_summary_byoutcome(animalsNames,lockedTo='SoundOn'):
         blockType[thisCellInds] = zScoreData['blockType']
         pValueMod[thisCellInds] = zScoreData['pValueMod']
         nTrialsEachCond[thisCellInds,:] = zScoreData['nTrialsEachCond']
+        meanRespEachChoice[thisCellInds,:] = zScoreData['meanRespEachChoice']
+        choiceType[thisCellInds] = zScoreData['choiceType']
+        pValueModChoice[thisCellInds] = zScoreData['pValueModChoice']
+        nTrialsEachChoice[thisCellInds,:] = zScoreData['nTrialsEachChoice']
         cellIDeachType[thisCellInds] = indcell
         strEachCell.extend([cellStr,cellStr])
         
@@ -1754,7 +1976,10 @@ def save_summary_byoutcome(animalsNames,lockedTo='SoundOn'):
              blockType=blockType,pValueMod=pValueMod,
              nTrialsEachCond=nTrialsEachCond,cellIDeachType=cellIDeachType,
              eachCondLabel=zScoreData['eachCondLabel'],
-             blockTypeLabel=zScoreData['blockTypeLabel'])
+             blockTypeLabel=zScoreData['blockTypeLabel'],
+             meanRespEachChoice=meanRespEachChoice,
+             choiceType=choiceType,pValueModChoice=pValueModChoice,
+             nTrialsEachChoice=nTrialsEachChoice)
 
 def load_summary_byoutcome(animalsNames,lockedTo='SoundOn'):
     ''' 

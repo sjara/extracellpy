@@ -605,7 +605,7 @@ def fit_psychometric(nTrials,nHits,xValues,theta0):
 
 if __name__ == "__main__":
 
-    CASE = 4
+    CASE = 5
     if CASE==1:
         '''Testing find_trials_each_type'''
         PsyCurveParameter = numpy.array([1,3,1,3])
@@ -655,3 +655,34 @@ if __name__ == "__main__":
         allBehav = save_many_sessions_reversal(animalNames,datesRange,
                                                outputFile,paramsToSave,
                                                attribToSave)
+    elif CASE==5:
+        from pylab import *
+        from extracellpy import loadbehavior
+        animalNames = ['saja142']
+        datesRange = ['2012-11-20','2012-11-21']
+        outputFile = '/tmp/test142.h5'
+        paramsToSave = ['TargetFreq','CurrentBlock','']
+        attribToSave = ['early']
+        keysToSave = ['TargetFreq','FreqLow','FreqHigh','FreqMid','CurrentBlock',
+                      'early','rightChoice','leftChoice','indexValidEachBlock',
+                      'blockEachTrial','correct']
+        dataTypes = ['i4','i4','i4','i4','i1',  'b','b','b','i4','i4','b']
+        allBehavData = save_many_sessions_reversal(animalNames,datesRange,
+                                                   outputFile,keysToSave,
+                                                   dtypes=dataTypes,
+                                                   dataClass=loadbehavior.ReversalBehaviorData,
+                                                   compression='lzf')
+        clf()
+        plot(allBehavData['correct'],'.',mfc='none',mec='b')
+        #plot(allBehavData['CurrentBlock'],'o',mfc='none',mec='r')
+        plot(allBehavData['TargetFreq'].astype(float)/30000,'o',mfc='none',mec='r')
+        plot(allBehavData['rightChoice'],'o',mfc='none',mec='g')
+        xlim([240,300])
+        ylim([-1,2])
+        draw()
+        show()
+        indt=24
+        allBehavData['correct'][indt]
+        allBehavData['TargetFreq'][indt]
+        allBehavData['rightChoice'][indt]
+        c=allBehavData['rightChoice']& (allBehavData['TargetFreq']==7000) &(allBehavData['CurrentBlock']==2)
