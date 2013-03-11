@@ -370,13 +370,13 @@ class ReversalBehaviorData(BehaviorData):
             rightPokeInID   = 16 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
             #leftPokeInID    = 16 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
             #rightPokeInID   = 4 ### WARNING!!! HARDCODED (What I thought before 2011-09-25)
-        elif rig in ['cnmcx','cnmc5','cnmc6','cnmc7','cnmc8','cnmc10','cnmc11','cnmc12']:
+        elif rig in ['cnmcx','cnmc5','cnmc6','cnmc7','cnmc8','cnmc10','cnmc11','cnmc12', 'cshl77']:
             # -- Most rigs (and old Linux state machine) --
             centerPokeInID = 0 ### WARNING!!! HARDCODED
             centerPokeOutID = 1 ### WARNING!!! HARDCODED
             leftPokeInID    = 4 ### WARNING!!! HARDCODED
             rightPokeInID   = 16 ### WARNING!!! HARDCODED
-        elif rig in ['cnmc9']:
+        elif rig in ['cnmc9','cnmc17','cnmc18','cnmc19']:
             # -- Santiago's rig (with newer Linux state machine) --
             centerPokeInID = 0 ### WARNING!!! HARDCODED
             centerPokeOutID = 1 ### WARNING!!! HARDCODED

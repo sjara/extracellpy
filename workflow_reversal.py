@@ -46,7 +46,7 @@ def behavior_summary(animalsNames,sessionList,trialslim=[],outputDir=''):
         for inda,animalName in enumerate(animalsNames):
             try:
                 behavData = sessionanalysis.load_behavior_session(animalName,thisSession)
-            except:
+            except IOError:
                 print thisSession+' does not exist'
                 continue
             print 'Loaded %s %s'%(animalName,thisSession)
@@ -196,7 +196,10 @@ def load_summary_spike_shape(animalsNames):
     return (spikeshapeData,cellDB)
     
 
+#def show_one_raster(animalName,ephysSession,behavSession,tetrode,cluster,timeRange,lockedTo='SoundOn'):
 def show_one_raster(animalName,ephysSession,behavSession,tetrode,cluster,timeRange,lockedTo='SoundOn'):
+    '''See also plot_raster_reversal().'''
+    
     ######## FINISH THIS ############
     allPostfix = {1:'SoundOn',2:'Cout',3:'SideIn'} ### FIXME: HARDCODED !!!
     
@@ -1209,6 +1212,10 @@ def plot_summary_modulation_TEMP(animalsNames,lockedTo='SoundOn',nBins = 32):
     (tstatw,pval) = stats.wilcoxon(dataToPlot[:,0],dataToPlot[:,1]) # paired test
     print 'p-value = %0.4f'%pval
 
+    signifCells = np.flatnonzero(pValToPlot<0.05)
+    for indcell in signifCells:
+        print cellDB[indcell]
+
     
 def plot_summary_modulation_grouped(animalsNames,lockedTo='SoundOn',nBins = 16, psignif=0.05):
     '''
@@ -2036,11 +2043,11 @@ def plot_summary_byoutcome_TEMP(animalsNames,lockedTo='SoundOn',nBins = 32):
 
     plt.clf()
     plt.subplot(1,2,1)
-    extraplots.plot_scatter(dataToPlot[:,0],dataToPlot[:,1],pValueToPlot,fontSize=12)
+    extraplots.plot_scatter(dataToPlot[:,0],dataToPlot[:,1],pValueToPlot)
     #extraplots.plot_scatter(np.log10(meanRespEachType[:,0]),np.log10(meanRespEachType[:,1]),pValueMod,fontSize=12)
 
     plt.subplot(1,2,2)
-    extraplots.plot_index_histogram(dataToPlot[:,0],dataToPlot[:,1],pValueToPlot,nBins=nBins,fontSize=12)
+    extraplots.plot_index_histogram(dataToPlot[:,0],dataToPlot[:,1],pValueToPlot,nBins=nBins)
 
     plt.draw()
     plt.show()
@@ -2051,6 +2058,10 @@ def plot_summary_byoutcome_TEMP(animalsNames,lockedTo='SoundOn',nBins = 32):
     MI = (dataToPlot[:,0]-dataToPlot[:,1])/np.abs(dataToPlot[:,0]+dataToPlot[:,1])
     print 'MI median = %0.4f'%(np.median(MI))
 
+    print((pValueToPlot<0.05).nonzero())
+    signifCells = np.flatnonzero(pValueToPlot<0.05)
+    for indcell in signifCells:
+        print cellDB[indcell]
     
     
 #def show_raster_figures(animalName,lockedTo,cellIndexList):
