@@ -392,8 +392,8 @@ def plot_dynamics(behavData,winsize=40,fontsize=12):
 
     nBlocks = len(behavData.eachBlockID)
     trialsEachBlock = behavData.trialsEachBlock
-    nValidEachBlock = sum(behavData.trialsEachBlock & (~behavData.early[:,np.newaxis]),axis=0)
-    lastValidEachBlock = cumsum(nValidEachBlock)
+    nValidEachBlock = np.sum(behavData.trialsEachBlock & (~behavData.early[:,np.newaxis]),axis=0)
+    lastValidEachBlock = np.cumsum(nValidEachBlock)
     firstValidEachBlock = np.concatenate(([0],lastValidEachBlock[:-1]))
 
     for indb in range(nBlocks):
