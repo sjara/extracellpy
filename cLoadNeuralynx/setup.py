@@ -6,6 +6,7 @@ To compile Cython run:
 from distutils.core import setup
 from distutils.extension import Extension
 from Cython.Distutils import build_ext
+import numpy as np        # Added to avoid "arrayobject.h" error
 
 sourcefiles = ['cLoadNeuralynx.pyx']
 
@@ -19,5 +20,6 @@ ext_modules = [Extension(
 setup(
     name = 'cLoadNeuralynx',
     cmdclass = {'build_ext': build_ext},
+    include_dirs = [np.get_include()],  # Added to avoid "arrayobject.h" error
     ext_modules = ext_modules
     )
