@@ -26,11 +26,14 @@ __version__ = '0.1'
 
 RASTER_MARKERSIZE = 2
 
-def behavior_summary(animalsNames,sessionList,trialslim=[],outputDir=''):
+def behavior_summary(animalsNames,sessionList,trialslim=[],outputDir='',protocol='saja_reversal'):
     '''
     animalsNames: an array of animals to analyze (it can also be a string for a single animal)
     sessionList: an array of sessions to analyze (it can also be a string for a single session)
     trialslim: array to set xlim() of dynamics' plot
+    outputDir: where to save the figure (if not specified, nothing will be saved)
+    protocol: load data from a different protocol. Warning: data should be loaded with
+              loadbehavior.ReversalBehaviorData().
     '''
     #dateRange
     if isinstance(animalsNames,str):
@@ -45,7 +48,7 @@ def behavior_summary(animalsNames,sessionList,trialslim=[],outputDir=''):
     for inds,thisSession in enumerate(sessionList):
         for inda,animalName in enumerate(animalsNames):
             try:
-                behavData = sessionanalysis.load_behavior_session(animalName,thisSession)
+                behavData = sessionanalysis.load_behavior_session(animalName,thisSession,protocol=protocol)
             except IOError:
                 print thisSession+' does not exist'
                 continue
@@ -2096,3 +2099,153 @@ def show_raster_figures(cellDB,lockedTo='SoundOn',groupedBy='4cond'):
         plt.show()
         plt.waitforbuttonpress()
 
+
+def save_response_dynamics(animalName,baseWindowInd=2):
+    '''
+    Calculate the average firing rate for different windows of trials.
+    Dynamics here means across trials (not within a trial).
+    '''
+    from scipy import stats
+
+    lockedTo = 'SoundOn'
+    responseRange = [0.010,0.150] # See workflow.save_zscores_modulation()
+    winSize = 50  # Window of trials
+    windowsFirstTrial = np.arange(0,600,winSize)
+    #baseWindowInd = 2 # The third window (100:150)
+    #baseWindowInd = 5 # The third window (100:150)
+
+        # -- Load list of cells --
+    sys.path.append(settings.CELL_LIST_PATH)
+    dataModule = 'allcells_%s'%(animalName)
+    allcells = __import__(dataModule)
+    reload(allcells)
+    dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
+    dataDir = os.path.join(dataPath,'lockedTo%s'%(lockedTo))
+    outputDir = os.path.join(dataPath,'response_dynamics_%d_%s'%(baseWindowInd,lockedTo))
+    
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+
+    nCells = len(allcells.cellDB)
+    prevSession = ''
+    for indcell,onecell in enumerate(allcells.cellDB):
+        cellStr = str(onecell).replace(' ','_')
+        fileName = os.path.join(dataDir,cellStr+'_'+lockedTo+'.npz')
+        if not os.path.exists(fileName):
+            print 'File does not exist: %s'%fileName
+            continue
+        #ephysData = np.load(fileName)
+        # -- Open file manually. Workaround for bug in numpy --
+        fileObj = open(fileName,'rb')
+        ephysData = np.load(fileObj)
+
+        spikeTimesFromEventOnset = ephysData['spikeTimesFromEventOnset']
+        indexLimitsEachTrial = ephysData['indexLimitsEachTrial']
+
+        # -- Load behavior --
+        if ephysData['behavSession']==prevSession:
+            print 'Behavior already loaded (%s)'%cellStr
+        else:
+            print 'Loading %s [%s] - %s'%(ephysData['animalName'],ephysData['behavSession'],cellStr)
+            behavData = sessionanalysis.load_behavior_session(ephysData['animalName'],
+                                                              ephysData['behavSession'])
+            prevSession = ephysData['behavSession']
+            
+        selectedTrials = np.ones(behavData['nTrials'],dtype=bool)
+        selectedTrials[onecell.trialsToExclude] = False
+        selectedTrials[behavData.early] = False
+
+        nSpikes = spikesanalysis.count_spikes_in_range(spikeTimesFromEventOnset,
+                                                       indexLimitsEachTrial,responseRange)
+        nSpikes = nSpikes[selectedTrials]
+
+        print('Warning: This function has many values hardcoded! TargetFreq, BlockID, ...')
+        ###trialsToAnalyze = ((behavData['BlockIndex']==1)|(behavData['BlockIndex']==2)) &\
+        ###                  (behavData['TargetFreq']==14200)
+        possibleFreqs = np.unique(behavData['TargetFreq'])
+        trialsToAnalyze = (behavData['TargetFreq']==possibleFreqs[-2]) # MidFreq
+        trialsToAnalyze = trialsToAnalyze[selectedTrials]
+        trialsToAnalyzeInds = np.flatnonzero(trialsToAnalyze)
+
+        windowsToAnalyze = np.vstack((windowsFirstTrial,windowsFirstTrial+winSize))
+        nWindows = windowsToAnalyze.shape[1]
+        meanSpikesEachWin = np.empty(nWindows)
+        zStatsEachWin = np.empty(nWindows)
+        nSpikesEachWin = []
+        for indw in range(nWindows):
+            trialsThisWin = (trialsToAnalyzeInds>windowsToAnalyze[0,indw])&\
+                            (trialsToAnalyzeInds<windowsToAnalyze[1,indw])
+            nSpikesEachWin.append(nSpikes[trialsToAnalyzeInds[trialsThisWin]])
+        for indw in range(nWindows):
+            meanSpikesEachWin[indw] = np.mean(nSpikesEachWin[indw])
+            [zStat,pValue] = stats.ranksums(nSpikesEachWin[indw],nSpikesEachWin[baseWindowInd])
+            zStatsEachWin[indw] = zStat
+
+        outputFileName = os.path.join(outputDir,'response_dynamics_'+cellStr+'_'+lockedTo+'.npz')
+        np.savez(outputFileName,windowsFirstTrial=windowsFirstTrial, responseRange=responseRange,
+                 meanSpikesEachWin=meanSpikesEachWin,zStatsEachWin=zStatsEachWin,cellInfo=onecell)
+        fileObj.close()
+        print 'Saved %s'%outputFileName
+
+
+def save_summary_response_dynamics(animalsNames,baseWindowInd=2):
+    '''
+    Load data from each cell and save one array with all data concatenated.
+    '''
+    lockedTo = 'SoundOn'
+    
+    cellDB = load_cells_database(animalsNames)
+
+    # -- Load first cell to get dimensions of data --
+    onecell = cellDB[0]
+    cellStr = str(onecell).replace(' ','_')
+    dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+    dataDir = os.path.join(dataPath,'response_dynamics_%d_%s'%(baseWindowInd,lockedTo))
+    respData = np.load(os.path.join(dataDir,'response_dynamics_'+cellStr+'_'+lockedTo+'.npz'))
+    nCells = len(cellDB)
+    nWindows = len(respData['meanSpikesEachWin'])
+    meanSpikesEachWin = np.empty((nWindows,nCells))
+    zStatsEachWin = np.empty((nWindows,nCells))
+    responseRange = respData['responseRange']
+    windowsFirstTrial = respData['windowsFirstTrial']
+    strEachCell = []
+
+    print 'Loading data from each cell... ',
+    for indcell,onecell in enumerate(cellDB):
+        dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+        dataDir = os.path.join(dataPath,'response_dynamics_%d_%s'%(baseWindowInd,lockedTo))
+        cellStr = str(onecell).replace(' ','_')
+        fileName = os.path.join(dataDir,'response_dynamics_'+cellStr+'_'+lockedTo+'.npz')
+        #zScoreData = np.load(fileName)
+        # -- Open file manually. Workaround for bug in numpy --
+        fileObj = open(fileName,'rb')
+        respData = np.load(fileObj)
+        meanSpikesEachWin[:,indcell] = respData['meanSpikesEachWin'].copy()
+        zStatsEachWin[:,indcell] = respData['zStatsEachWin'].copy()
+        fileObj.close()
+        strEachCell.append(cellStr)
+    print 'done!'
+    
+    strAllAnimals = '-'.join(animalsNames)
+    outputDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+    outputFileName = os.path.join(outputDir,'summary_response_dynamics_%d_%s_%s.npz'%(baseWindowInd,strAllAnimals,lockedTo))
+    print 'Saving summary to %s'%outputFileName
+    np.savez(outputFileName,meanSpikesEachWin=meanSpikesEachWin,zStatsEachWin=zStatsEachWin,
+             responseRange=responseRange,strEachCell=strEachCell,
+             windowsFirstTrial=windowsFirstTrial)
+
+    
+def load_summary_response_dynamics(animalsNames,baseWindowInd=2,lockedTo='SoundOn'):
+    ''' 
+    Load summary of evoked responses.
+    '''
+    cellDB = load_cells_database(animalsNames)
+    strAllAnimals = '-'.join(animalsNames)
+    dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    respDynamicsFileName = os.path.join(dataDir,'summary_response_dynamics_%d_%s_%s.npz'%(baseWindowInd,strAllAnimals,lockedTo))
+    respDynamics = np.load(respDynamicsFileName)
+    return (respDynamics,cellDB)

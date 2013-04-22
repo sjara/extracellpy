@@ -427,12 +427,21 @@ def plot_summary(behavData,fontsize=12):
 
     percentEarly = 100*sum(behavData.early)/float(behavData['nTrials'])
 
-    g1 = behavData.lowFreqs & behavData.leftReward
-    g2 = behavData.lowFreqs & behavData.rightReward
-    g3 = behavData.highFreqs & behavData.leftReward
-    g4 = behavData.highFreqs & behavData.rightReward
-
-    trialsEachCond = np.array([g1,g2,g3,g4])
+    mostCommonBlock = np.argmax(np.bincount(behavData['CurrentBlock'].astype(int)))
+    if mostCommonBlock != 1:
+        # -- Blocks change from LowFreq to HighFreq
+        g1 = behavData.lowFreqs & behavData.leftReward
+        g2 = behavData.lowFreqs & behavData.rightReward
+        g3 = behavData.highFreqs & behavData.leftReward
+        g4 = behavData.highFreqs & behavData.rightReward
+    else:
+        # -- ExtremeFreq --
+        g1 = behavData.leftReward
+        g2 = zeros(len(behavData.leftReward)).astype(bool)
+        g3 = zeros(len(behavData.leftReward)).astype(bool)
+        g4 = behavData.rightReward
+        
+    trialsEachCond = np.array([g1,g2,g3,g4])        
     validTrialsEachCond = trialsEachCond & (~behavData.early)
     correctTrialsEachCond = validTrialsEachCond & behavData.correct
     percentEarly = 100*sum(behavData.early)/float(len(behavData.early))

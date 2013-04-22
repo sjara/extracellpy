@@ -32,10 +32,12 @@ npOR = np.logical_or
 npNOT = np.logical_not
 
 
-def load_behavior_session(animalName,behavSession):
+def load_behavior_session(animalName,behavSession,protocol='saja_reversal'):
     behavDataDir = os.path.join(BEHAVIORPATH,'%s/'%(animalName))
-    behavFileName = 'data_saja_reversal_santiago_%s_%s.h5'%(animalName,behavSession)
+    #behavFileName = 'data_saja_reversal_santiago_%s_%s.h5'%(animalName,behavSession)
+    behavFileName = 'data_%s_santiago_%s_%s.h5'%(protocol,animalName,behavSession)
     behavFile = os.path.join(behavDataDir,behavFileName)
+    print behavFile
     behavData = loadbehavior.ReversalBehaviorData(behavFile)
     behavData.extract_event_times()
     behavData.find_trials_each_type()
