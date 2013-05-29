@@ -315,7 +315,7 @@ def save_raster_plots(animalName,lockedTo='SoundOn',groupedBy='4cond',cellDB=Non
             #plt.draw(); plt.show(); break
 
 
-def plot_raster_reversal(onecell,ephysData,behavData,lockedTo,groupedBy):
+def plot_raster_reversal(onecell,ephysData,behavData,lockedTo,groupedBy,colorEachCond=None):
     '''
     NOTE: This function is not well designed. It requires inputs in very specific/complex formats.
     It just makes the code more readable.
@@ -351,7 +351,8 @@ def plot_raster_reversal(onecell,ephysData,behavData,lockedTo,groupedBy):
         (trialsEachCond,condInfo) = sessionanalysis.trials_by_condition(behavData,1,
                                                                         outcome='correctness',
                                                                         selected=selectedTrials)
-    colorEachCond = condInfo['colorEachCond']
+    if colorEachCond is None:
+        colorEachCond = condInfo['colorEachCond']
 
     (PSTH,binsStartTime,spikeRasterMat) = \
         spikesanalysis.calculate_psth_per_condition(spikeTimesFromEventOnset,
@@ -611,6 +612,14 @@ def save_summary_responsiveness(animalsNames,zThreshold=3,responseRange=[0,0.150
              responsiveLowFreq=responsiveLowFreq,responsiveMidFreq=responsiveMidFreq,
              responsiveHighFreq=responsiveHighFreq,responsiveMidFreqCombined=responsiveMidFreqCombined)
 
+def load_summary_responsiveness(animalsNames):
+    lockedTo = 'SoundOn'
+    strAllAnimals = '-'.join(animalsNames)
+    dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    respFileName = os.path.join(dataDir,'summary_resp_%s_%s.npz'%(strAllAnimals,lockedTo))
+    rdata = np.load(respFileName)
+    return rdata
+    
 def print_summary_responsiveness(animalsNames):
     '''
     Print summary of responses.
@@ -647,6 +656,152 @@ def list_responsive(animalsNames,freq='mid'):
     for cellstr in rdata['strEachCell'][soundResponsive]:
         print cellstr
 
+def save_response_distribution(animalName,lockedTo='SoundOn',maxSpikeCount=30):
+    '''Save distribution of spike count across trials (for response period).
+       shape [nCond,nBins] '''
+    responseRange = [0.010,0.150]
+    ###nBins = 30 # How many bins used to characterize distribution of counts
+    
+    # -- Load list of cells --
+    sys.path.append(settings.CELL_LIST_PATH)
+    dataModule = 'allcells_%s'%(animalName)
+    allcells = __import__(dataModule)
+    reload(allcells)
+    dataPath = settings.PROCESSED_REVERSAL_PATH%(animalName)
+    dataDir = os.path.join(dataPath,'lockedTo%s'%(lockedTo))
+    outputDir = os.path.join(dataPath,'response_distribution_%s'%lockedTo)
+
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+        
+    nCells = len(allcells.cellDB)
+    prevSession = ''
+    for indcell,onecell in enumerate(allcells.cellDB):
+        cellStr = str(onecell).replace(' ','_')
+        fileName = os.path.join(dataDir,cellStr+'_'+lockedTo+'.npz')
+        if not os.path.exists(fileName):
+            print 'File does not exist: %s'%fileName
+            continue
+        #ephysData = np.load(fileName)
+        # -- Open file manually. Workaround for bug in numpy --
+        fileObj = open(fileName,'rb')
+        ephysData = np.load(fileObj)
+
+        spikeTimesFromEventOnset = ephysData['spikeTimesFromEventOnset']
+        indexLimitsEachTrial = ephysData['indexLimitsEachTrial']
+
+        # -- Load behavior --
+        if ephysData['behavSession']==prevSession:
+            print 'Behavior already loaded (%s)'%cellStr
+        else:
+            print 'Loading %s [%s] - %s'%(ephysData['animalName'],ephysData['behavSession'],cellStr)
+            behavData = sessionanalysis.load_behavior_session(ephysData['animalName'],
+                                                              ephysData['behavSession'])
+            prevSession = ephysData['behavSession']
+
+        # --- Calculate spike counts in response to stimulus --- 
+        nspkResp=spikesanalysis.count_spikes_in_range(spikeTimesFromEventOnset,
+                                                      indexLimitsEachTrial,
+                                                      responseRange)
+
+        selectedTrials = np.ones(behavData['nTrials'],dtype=bool)
+        selectedTrials[onecell.trialsToExclude] = False
+        (trialsEachCond,condInfo) = sessionanalysis.trials_by_condition(behavData,1,
+                                                                        outcome='valid',
+                                                                        selected=selectedTrials)
+        #histBins = range(nBins)
+        nCond = len(trialsEachCond)
+        spikeCounts = np.zeros((nCond,maxSpikeCount+1))
+        for indc in range(nCond):
+            spikeCountsChunk = np.bincount(nspkResp[trialsEachCond[indc]])
+            maxCount = len(spikeCountsChunk)
+            if maxCount>maxSpikeCount:
+                print('*****  Warning! ***** Spike count is greater than the max limit.\n'+\
+                      'This trials will be treated as if it had the max count ({0})'.format(maxSpikeCount+1))
+                trialOverMax = np.sum(spikeCountsChunk[maxSpikeCount+1:])
+                spikeCountsChunk = spikeCountsChunk[:maxSpikeCount+1]
+                spikeCountsChunk[-1] = spikeCountsChunk[-1]+trialOverMax
+            spikeCounts[indc,:maxCount] = spikeCountsChunk
+            
+        outputFileName = os.path.join(outputDir,'resp_distrib_'+cellStr+'_'+lockedTo+'.npz')
+        np.savez(outputFileName,spikeCounts=spikeCounts,
+                 trialsEachCondLabels=condInfo['trialsEachCondLabels'],cellInfo=onecell)
+        fileObj.close()
+            
+
+def save_summary_response_distribution(animalsNames):
+    '''
+    Load response distribution for all cells and combine into one file.
+    Results are saved in settings.PROCESSED_REVERSAL_PATH
+    '''
+    lockedTo = 'SoundOn'
+    cellDB = load_cells_database(animalsNames)
+
+    # -- Load first cell to get dimensions of data --
+    onecell = cellDB[0]
+    cellStr = str(onecell).replace(' ','_')
+    dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+    dataDir = os.path.join(dataPath,'response_distribution_%s'%lockedTo)
+    respData = np.load(os.path.join(dataDir,'resp_distrib_'+cellStr+'_'+lockedTo+'.npz'))
+    nCells = len(cellDB)
+    spikeCounts = respData['spikeCounts']
+    spikeCountsEachCell = np.empty(spikeCounts.shape+(nCells,),dtype=int)
+    respDistributionEachCell = np.empty(spikeCountsEachCell.shape)
+    meanSpikesEachCell = np.empty(nCells)
+    strEachCell = []
+    
+    print 'Loading all responses... ',
+    for indcell,onecell in enumerate(cellDB):
+        dataPath = settings.PROCESSED_REVERSAL_PATH%(onecell.animalName)
+        dataDir = os.path.join(dataPath,'response_distribution_%s'%lockedTo)
+        cellStr = str(onecell).replace(' ','_')
+        fileName = os.path.join(dataDir,'resp_distrib_'+cellStr+'_'+lockedTo+'.npz')
+        #zScoreData = np.load(fileName)
+        # -- Open file manually. Workaround for bug in numpy --
+        fileObj = open(fileName,'rb')
+        respData = np.load(fileObj)
+        spikeCountsEachCell[:,:,indcell] = respData['spikeCounts'].copy()
+        respDistributionEachCell[:,:,indcell] = respData['spikeCounts'].astype(float)/respData['spikeCounts'].sum(axis=1)[:,np.newaxis]
+        # -- Calculate average spike count for this cell --
+        nBins = respData['spikeCounts'].shape[1]
+        bins = np.arange(nBins)
+        nTrialsEachCond = respData['spikeCounts'].sum(axis=1)
+        meanSpikesEachCond = np.dot(spikeCounts,bins)/nTrialsEachCond.astype(float)
+        meanSpikesEachCell[indcell] = meanSpikesEachCond.mean()
+        if indcell==0:
+            # -- Record condition labels --
+            ###responseRanges = respData['responseRanges']
+            ###trialsEachCondLabels=respData['trialsEachCondLabels']
+            pass
+        fileObj.close()
+        strEachCell.append(cellStr)
+    print 'done!'
+
+    strAllAnimals = '-'.join(animalsNames)
+    outputDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    if not os.path.exists(outputDir):
+        print 'Creating output directory: %s'%(outputDir)
+        os.makedirs(outputDir)
+    outputFileName = os.path.join(outputDir,'summary_response_distribution_%s_%s.npz'%(strAllAnimals,lockedTo))
+    print 'Saving summary to %s'%outputFileName
+    np.savez(outputFileName,spikeCountsEachCell=spikeCountsEachCell,
+             respDistributionEachCell=respDistributionEachCell,
+             meanSpikesEachCell=meanSpikesEachCell,
+             strEachCell=strEachCell)
+    pass
+
+def load_summary_response_distribution(animalsNames):
+    ''' 
+    Load summary of evoked responses.
+    '''
+    lockedTo='SoundOn'
+    cellDB = load_cells_database(animalsNames)
+    strAllAnimals = '-'.join(animalsNames)
+    dataDir = settings.PROCESSED_REVERSAL_PATH%('all')
+    respDistribFileName = os.path.join(dataDir,'summary_response_distribution_%s_%s.npz'%(strAllAnimals,lockedTo))
+    respDistribData = np.load(respDistribFileName)
+    return (respDistribData,cellDB)
 
 def save_evoked_response(animalName,lockedTo='SoundOn'):
     '''Save spike count for spontaneous and evoked periods.
